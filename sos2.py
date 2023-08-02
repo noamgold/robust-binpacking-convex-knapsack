@@ -94,7 +94,7 @@ def p_eval(b,p,w,k):
         return (1-fraction) * p_row[left_index] + fraction * p_row[right_index]
     
 #need to pull out indices of items used in final knapsack in addition with imax
-def convex_pw_knapsack(p,b,W):
+def convex_pw_knapsack_dp(p,b,W):
 
     n,m = p.shape  # n = rows // m = columns
     nb,mb = b.shape
@@ -121,13 +121,16 @@ def convex_pw_knapsack(p,b,W):
                 i_max = i
                 B_max = B
                 items_max = items
+                print("i_max: ", i_max)
+                print("items intial: ", items)
+                print("items max: ", items_max)
     # print("w_max: ",w_max)
     # print("i_max: ",i_max)
     # print("B_max: ",B_max, len(B_max))
     # print("W: ", W)
     return max_val, items_max[w_max], i_max
 
-print(convex_pw_knapsack(p,b,B))
+print(convex_pw_knapsack_dp(p,b,B))
 
 # sos2(p,b,B)
 # print(p_eval(b, p, 2.5, 1))
@@ -175,7 +178,7 @@ if __name__ == "__main__":
 
         convex_start_process = time.process_time()
         convex_start_elapsed = time.time()
-        convex_val = convex_pw_knapsack(p,b,B)
+        convex_val = convex_pw_knapsack_dp(p,b,B)
         convex_end_process = time.process_time()
         convex_end_elapsed = time.time()
         convex_time_process.append(convex_end_process - convex_start_process)

@@ -48,12 +48,12 @@ def rebppinit(a_bar, a_hat, V, c):
     m = len(c)
     n = len(a_bar)
     
-    y,f_bar,z = {},{},{}
+    y,alpha_bar,z = {},{},{}
     theta = model.addVar(vtype = "C", name = "theta")
 
     for j in range(m):
         y[j] = model.addVar(vtype="B", name="y(%s)"%j)
-        f_bar[j] = model.addVar(vtype="C", name="f_bar(%s)"%j)
+        alpha_bar[j] = model.addVar(vtype="C", name="alpha_bar(%s)"%j)
         for i in range(n):
             z[i,j] = model.addVar(vtype="B", name="z(%s,%s)"%(i,j))
 
@@ -64,15 +64,17 @@ def rebppinit(a_bar, a_hat, V, c):
             model.addCons(z[i,j] <= y[j], "Strong(%s,%s)"%(i,j)) #constraint 1c
     
     for j in range(m):
-        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= f_bar[j] + y[j] * V )
+        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= alpha_bar[j] + y[j] * V )
 
-    model.setObjective(quicksum(y[j] + c[j] * f_bar[j] for j in range(m))+theta, "minimize")
+    model.addCons(quicksum(c[j]*alpha_bar[j] for j in range(m)) <= theta)
+
+    model.setObjective(quicksum(y[j] for j in range(m))+theta, "minimize")
 
     # model.writeLP("initial_model.lp")
 
-    return model, theta, y, f_bar, z
+    return model, theta, y, alpha_bar, z
 
-def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar, z, alpha, scenario_num):
+def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
     m = len(y)
     n = len(a_bar)
     model.freeTransform()
@@ -81,7 +83,7 @@ def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar, z, alpha, scenario_num)
     print("scenario_num: ", scenario_num)
     for j in range(m):
         alpha[j,scenario_num] = model.addVar(vtype="C",name="alpha(%s,%s)"%(j,scenario_num))
-        model.addCons(quicksum(z[i,j]*(a_bar[i]+a[i]) for i in range(n)) <= V*y[j] + f_bar[j] + alpha[j,scenario_num])
+        model.addCons(quicksum(z[i,j]*(a_bar[i]+a[i]) for i in range(n)) <= V*y[j] + alpha[j,scenario_num])
 
     model.addCons(quicksum(c[j]*alpha[j,scenario_num] for j in range (m)) <= theta)
     
@@ -286,13 +288,14 @@ def P_upper_bound(w,p,W):
         else:
             return p_bar
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def for_loop_method_all_w(p,w,W):
     
     n = len(p)
     A = [0] * (W + 1)
     B = [0] * (W + 1)
-    items = [[] for i in range(W+1)]
+    items = [[i for i in range(0)] for _ in range(W+1)]
+    # items = [[] for i in range(W+1)]
     # items = np.empty((0,W+1),int)
 
     for k in range(n):
@@ -303,12 +306,14 @@ def for_loop_method_all_w(p,w,W):
                 print(items)
                 print(weight)
                 print(k)
-                items[weight].append(k)
+                temp = items[weight-w[k]].copy()
+                temp.append(k)
+                items[weight] = temp
                 # items[weight].append(k)
 
     return B, items
 
-# @jit(nopython=True)
+@jit(nopython=True)
 def for_loop_method(p,w,W):
     B = for_loop_method_all_w(p,w,W)
     return B[W]
