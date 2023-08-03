@@ -14,11 +14,11 @@ from sklearn.tree import DecisionTreeRegressor
 from sklearn import tree
 from sklearn.model_selection import cross_val_score
 
-import xgboost as xgb
+# import xgboost as xgb
 from sklearn.metrics import mean_squared_error
 import matplotlib.pyplot as plt
 
-AHAT_PTILE = 98
+AHAT_PTILE = 95
 
 #rambam_data = pd.read_csv("OperatingRoom13300Merged.csv")
 #rambam_data = pd.read_csv("OperatingRoom13200Ready.csv")
@@ -33,6 +33,9 @@ print(features)
 
 X = rambam_data.drop("SurgeryLength", axis=1)
 X = X.drop("ID_NO",axis=1)
+
+admit_no = X["ADMISSION_NO"]
+
 X = X.drop("ADMISSION_NO",axis=1)
 #X = X.drop("OPR_DATE",axis=1)
 #X = X.drop("START_TIME",axis=1)
@@ -139,15 +142,22 @@ print("mean cross validation score: {}".format(np.mean(dt_scores)))
 ##print(model)
 
 y_class = dt.apply(X)
+unique, counts = np.unique(y_class, return_counts=True)
+print("here: ", np.asarray((unique, counts)).T)
 leaf_num = max(y_class)+1
 ahat = np.zeros(len(y_class))
 a = y_pred
-for i in range(leaf_num):
+y_class_unique = np.unique(y_class)
+for i in y_class_unique:
    idxs = np.where(y_class == i)
+   print(idxs)
    ahat[idxs] = np.percentile(y[idxs],AHAT_PTILE)
 
-X.assign(a=a)
-X.assign(ahat=ahat)
+X["a"] = a
+X["ahat"] = ahat - a
+X["ADMISSION_NO"] = admit_no
+
+X = X.sort_values("ADMISSION_NO")
 
 X.to_csv("Dep13300with_a_ahat.csv")
 
