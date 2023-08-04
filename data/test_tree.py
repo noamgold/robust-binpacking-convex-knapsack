@@ -101,12 +101,12 @@ X.info()
 #print(rules)
 ##alldata = xgb.DMatrix(X,y,enable_categorical=True)
 
-params = {"objective": "reg:squarederror","max_depth":4}
+#params = {"objective": "reg:squarederror","max_depth":3}
 
 n = 1
 
 ##  results = xgb.cv(params=params, dtrain=alldata, num_boost_round=n, nfold=5, metrics={"rmse"}) #evals=evals)
-dt = DecisionTreeRegressor(max_depth=4)
+dt = DecisionTreeRegressor(max_depth=3)
 ##print(results)
 dt_fit = dt.fit(X, y)
 
