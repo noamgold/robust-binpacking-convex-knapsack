@@ -41,6 +41,54 @@ def FFD(s, B):
             remain.append(B-item)
     return sol
 
+U = {}
+#robust extensible bin packing problem
+def rebppinit(a_bar, a_hat, V, c):
+    model = Model("rebpp")
+    m = len(c)
+    n = len(a_bar)
+    
+    y,alpha_bar,z = {},{},{}
+    theta = model.addVar(vtype = "C", name = "theta")
+
+    for j in range(m):
+        y[j] = model.addVar(vtype="B", name="y(%s)"%j)
+        alpha_bar[j] = model.addVar(vtype="C", name="alpha_bar(%s)"%j)
+        for i in range(n):
+            z[i,j] = model.addVar(vtype="B", name="z(%s,%s)"%(i,j))
+
+
+    for i in range(n): 
+        model.addCons(quicksum(z[i,j] for j in range(m)) == 1, "Assign(%s)"%i) #constraint 1b
+        for j in range(m):
+            model.addCons(z[i,j] <= y[j], "Strong(%s,%s)"%(i,j)) #constraint 1c
+    
+    for j in range(m):
+        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= alpha_bar[j] + y[j] * V )
+
+    model.addCons(quicksum(c[j]*alpha_bar[j] for j in range(m)) <= theta)
+
+    model.setObjective(quicksum(y[j] for j in range(m))+theta, "minimize")
+
+    # model.writeLP("initial_model.lp")
+
+    return model, theta, y, alpha_bar, z
+
+def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
+    m = len(y)
+    n = len(a_bar)
+    model.freeTransform()
+
+    # alpha = {}
+    print("scenario_num: ", scenario_num)
+    for j in range(m):
+        alpha[j,scenario_num] = model.addVar(vtype="C",name="alpha(%s,%s)"%(j,scenario_num))
+        model.addCons(quicksum(z[i,j]*(a_bar[i]+a[i]) for i in range(n)) <= V*y[j] + alpha[j,scenario_num])
+
+    model.addCons(quicksum(c[j]*alpha[j,scenario_num] for j in range (m)) <= theta)
+    
+    return model, alpha
+
 def bpp(s,B):
     n = len(s)
     U = len(FFD(s,B))
@@ -71,14 +119,19 @@ def solveBinPacking(s,B):
     model.setObjlimit(U+1)
     model.optimize()
     bins = [[] for i in range(int(model.getObjVal()))]
+
     for (i,j) in x:
         if model.getVal(x[i,j]) > .5:
             bins[j].append(s[i])
+
     for i in range(bins.count([])):
         bins.remove([])
+
     for b in bins:
         b.sort()
+
     bins.sort()
+
     return bins
 
 def min_weight(P,k,w,p):
@@ -214,6 +267,9 @@ def P_upper_bound_real(w,p,W):
             return math.ceil(p_bar)
 
 def P_upper_bound(w,p,W):
+    """
+    function to get a higher p_upper bound rather than just the sum
+    """
     curr_total_weight = 0
     p_bar = 0
     w_to_p = {}
@@ -221,7 +277,7 @@ def P_upper_bound(w,p,W):
     for i in range(len(w)):
         w_to_p[w[i]] = p[i]
         ratios[(p[i]/w[i])] = w[i]
-    sorted_bfb = dict(reversed(sorted(ratios.items())))
+    sorted_bfb = dict(reversed(sorted(ratios.items()))) #orderes items in which they give the most bang for your buck
     for best in sorted_bfb:
         weight = sorted_bfb[best]
         if W - curr_total_weight > 0:
@@ -241,15 +297,18 @@ def for_loop_method_all_w(p,w,W):
     n = len(p)
     A = [0] * (W + 1)
     B = [0] * (W + 1)
+    items = [[i for i in range(0)] for _ in range(W+1)] #used to initialize a 2d array
 
     for k in range(n):
         A = B.copy()
-
         for weight in range(w[k], W + 1):
             if A[weight - w[k]] + p[k] > A[weight]:
                 B[weight] = A[weight - w[k]] + p[k]
+                temp = items[weight-w[k]].copy()
+                temp.append(k)
+                items[weight] = temp
 
-    return B
+    return B, items
 
 @jit(nopython=True)
 def for_loop_method(p,w,W):
@@ -258,7 +317,6 @@ def for_loop_method(p,w,W):
     
 def for_loop_method_profit(P,p,w,W):
     n = len(p)
-    #A = [0] * (P + 1)
     B = [float('inf')] * (P + 1)
     B[0] = 0
 
@@ -268,13 +326,20 @@ def for_loop_method_profit(P,p,w,W):
         for profit in range(p[k], P + 1):
             if A[profit - p[k]] + w[k] < A[profit]:
                 B[profit] = A[profit - p[k]] + w[k]
-        # print("B vector: ", B)
+
     for p in range(P+1):
         if B[p] <= W:
             max_p = p
+
     return max_p
 
 if __name__ == "__main__":
+
+    """
+    Code below used to track run times for the for loop method vs the scip method
+    and can also be used to track run times for the f method vs g method (profit vs weight)
+    """
+
     st = time.time()
 
     fin_g = []
@@ -291,10 +356,10 @@ if __name__ == "__main__":
     for_time_elapsed = []
     bounds = []
 
-    for i in range(20):
-        print(i)
+    for i in range(20): # number of trials to average out on
+        print(i) # to see what iteration it's on
         R = 1000
-        k_random = 5000
+        k_random = 500 # number of items
         w_random = []
         
 
@@ -312,8 +377,6 @@ if __name__ == "__main__":
         W_random = int(20/101 * sum(w_random))
         P_max = P_upper_bound_real(w_random, p_random, W_random)
         bounds.append(P_max)
-        # P_max = P_upper_bound(w_random, p_random, W_random)
-        # P_max = sum(p_random)
 
 
         knap_start_process = time.process_time()
@@ -354,14 +417,12 @@ if __name__ == "__main__":
         print("done with for loop method")
 
 
+        # fin_f.append(f_star)
         # fin_g.append(g_star)
         fin_knap.append(knap_star)
-        # fin_f.append(f_star)
         fin_for.append(for_star)
 
 
-    # print(f(9,k,w,p))
-    # print(p_opt_trial(P,k,w,p,W))
     et = time.time()
     # print(fin_g)
     # print(fin_f)
