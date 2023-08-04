@@ -42,7 +42,7 @@ def FFD(s, B):
     return sol
 
 U = {}
-#robust extensible bin packing problem
+# robust extensible bin packing problem
 def rebppinit(a_bar, a_hat, V, c):
     model = Model("rebpp")
     m = len(c)
@@ -51,20 +51,21 @@ def rebppinit(a_bar, a_hat, V, c):
     y,alpha_bar,z = {},{},{}
     theta = model.addVar(vtype = "C", name = "theta")
 
+    # initialize variables
     for j in range(m):
         y[j] = model.addVar(vtype="B", name="y(%s)"%j)
         alpha_bar[j] = model.addVar(vtype="C", name="alpha_bar(%s)"%j)
         for i in range(n):
             z[i,j] = model.addVar(vtype="B", name="z(%s,%s)"%(i,j))
 
-
+    # initialize constraints
     for i in range(n): 
         model.addCons(quicksum(z[i,j] for j in range(m)) == 1, "Assign(%s)"%i) #constraint 1b
         for j in range(m):
             model.addCons(z[i,j] <= y[j], "Strong(%s,%s)"%(i,j)) #constraint 1c
     
     for j in range(m):
-        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= alpha_bar[j] + y[j] * V )
+        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= alpha_bar[j] + y[j] * V ) # moved y[j] * V to other side
 
     model.addCons(quicksum(c[j]*alpha_bar[j] for j in range(m)) <= theta)
 
@@ -75,11 +76,14 @@ def rebppinit(a_bar, a_hat, V, c):
     return model, theta, y, alpha_bar, z
 
 def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
+    """
+    used to recieve new model and alph
+    """
+
     m = len(y)
     n = len(a_bar)
     model.freeTransform()
 
-    # alpha = {}
     print("scenario_num: ", scenario_num)
     for j in range(m):
         alpha[j,scenario_num] = model.addVar(vtype="C",name="alpha(%s,%s)"%(j,scenario_num))
@@ -312,7 +316,7 @@ def for_loop_method_all_w(p,w,W):
 
 @jit(nopython=True)
 def for_loop_method(p,w,W):
-    B = for_loop_method_all_w(p,w,W)
+    B, items = for_loop_method_all_w(p,w,W)
     return B[W]
     
 def for_loop_method_profit(P,p,w,W):
@@ -356,7 +360,7 @@ if __name__ == "__main__":
     for_time_elapsed = []
     bounds = []
 
-    for i in range(20): # number of trials to average out on
+    for i in range(10): # number of trials to average out on
         print(i) # to see what iteration it's on
         R = 1000
         k_random = 500 # number of items

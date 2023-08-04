@@ -48,6 +48,11 @@ X = X.drop("ADMISSION_NO",axis=1)
 #X = X.drop("Visit#",axis=1)
 #X = X.drop("Time_Enter",axis=1)
 X = X.drop("LOS[days]",axis=1)
+
+X["OPR_DATE"] = pd.to_datetime(X["OPR_DATE"])
+print(X.dtypes)
+
+
 #
 #X = X.drop(["F1","F8"],axis=1)
 #X = X.to_numpy()
@@ -60,6 +65,8 @@ X.columns = X.columns.astype(str)
 #X = X.drop("F1",axis=1)
 #X = X.drop(["F7","F8","F9","F10"],axis=1)
 #X = X.drop("Departement",axis=1)
+
+print("**************",X.dtypes)
 
 
 #X['Gender'].replace(['נקבה', 'זכר'],[0, 1], inplace=True)
@@ -94,12 +101,12 @@ X.info()
 #print(rules)
 ##alldata = xgb.DMatrix(X,y,enable_categorical=True)
 
-params = {"objective": "reg:squarederror","max_depth":3}
+params = {"objective": "reg:squarederror","max_depth":4}
 
 n = 1
 
 ##  results = xgb.cv(params=params, dtrain=alldata, num_boost_round=n, nfold=5, metrics={"rmse"}) #evals=evals)
-dt = DecisionTreeRegressor(max_depth=3)
+dt = DecisionTreeRegressor(max_depth=4)
 ##print(results)
 dt_fit = dt.fit(X, y)
 
@@ -157,9 +164,10 @@ X["a"] = a
 X["ahat"] = ahat - a
 X["ADMISSION_NO"] = admit_no
 
-X = X.sort_values("ADMISSION_NO")
+# X = X.sort_values("ADMISSION_NO")
 
-X.to_csv("Dep13300with_a_ahat.csv")
+X.to_csv("Dep13300with_a_ahat_test.csv")
+X.sort_values(by = "OPR_DATE", inplace = True)
 
 
 fig, ax = plt.subplots(figsize=(20, 20))
