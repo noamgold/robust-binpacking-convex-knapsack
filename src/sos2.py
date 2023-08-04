@@ -18,12 +18,10 @@ b = np.array([[0,2,4],
      [0,2,4]])
 
 def sos2(p,b,B):
-
+    print("sos2....")
     model = Model("CPKP")
     model.setParam('limits/time', 3600)
     model.hideOutput()
-
-
     t = {}
 
     n,m = p.shape  # n = rows // m = columns
@@ -66,6 +64,7 @@ def sos2(p,b,B):
 # sos2(p,b,B)
 
 def p_eval(b,p,w,k):
+    print("p_eval....")
     b_row = b[k,:]
     p_row = p[k,:]
 
@@ -95,11 +94,12 @@ def p_eval(b,p,w,k):
     
 #need to pull out indices of items used in final knapsack in addition with imax
 def convex_pw_knapsack_dp(p,b,W):
-
+    print("convex_pw_knapsack_dp...")
     n,m = p.shape  # n = rows // m = columns
     nb,mb = b.shape
     w_max = 0
     i_max = None
+    items_max = [[]]
     assert m == mb and n == nb # make sure that they have the same dimensions
 
     profit_array = p[:,m-1]
@@ -124,13 +124,15 @@ def convex_pw_knapsack_dp(p,b,W):
                 print("i_max: ", i_max)
                 print("items intial: ", items)
                 print("items max: ", items_max)
-    # print("w_max: ",w_max)
-    # print("i_max: ",i_max)
-    # print("B_max: ",B_max, len(B_max))
-    # print("W: ", W)
+    #print("w_max: ",w_max)
+    #print("i_max: ",i_max)
+    ## print("B_max: ",B_max, len(B_max))
+    ## print("W: ", W)
+    #print(max_val)
+    #print(items_max)
     return max_val, items_max[w_max], i_max
 
-print(convex_pw_knapsack_dp(p,b,B))
+#print(convex_pw_knapsack_dp(p,b,B))
 
 # sos2(p,b,B)
 # print(p_eval(b, p, 2.5, 1))

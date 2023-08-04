@@ -54,7 +54,7 @@ def convex_pw_knapsack(p, b, Omega, z, a_hat, model, sos = True):
     t_val1 = [0] * m
     t_val2 = [0] * m
     p_star = None
-    items = None
+    items = []
     i_max = None
 
     # if we use the scip version
@@ -84,10 +84,11 @@ def convex_pw_knapsack(p, b, Omega, z, a_hat, model, sos = True):
                     a[i] = a_hat[i]
                     fullDevSum += a_hat[i]
         remDev = Omega - fullDevSum
-        for i in range(n):
-            if model.getVal(z[i,i_max]) == 1:
-                a[i] = min(a_hat[i],remDev)
-                remDev -= a[i]
+        if i_max is not None:
+            for i in range(n):
+                if model.getVal(z[i,i_max]) == 1:
+                    a[i] = min(a_hat[i],remDev)
+                    remDev -= a[i]
 
     return p_star, a
 
@@ -105,18 +106,17 @@ if __name__ == "__main__":
     a_hat = []
     Omega = 240 # also B
     V = 480
-    c = [0.005,0.005,0.005,0.005,0.005]
+    c = [0.002,0.002,0.002,0.002,0.002,0.002,0.002,0.002]
     BEGIN = 0
     END = 50
 
-    rambam_data = pd.read_csv("Dep13300with_a_ahat.csv")
+    rambam_data = pd.read_csv("../data/Dep13300with_a_ahat.csv")
     a_bar = rambam_data["a"]
     a_hat = rambam_data["ahat"]
     a_bar = np.round(a_bar[BEGIN:END].to_numpy())
     a_hat = np.round(a_hat[BEGIN:END].to_numpy())
     a_bar = np.asarray(a_bar, dtype = 'int')
     a_hat = np.asarray(a_hat, dtype = 'int')
-
 
 
 
@@ -145,7 +145,7 @@ if __name__ == "__main__":
         model.optimize()
         print_sol(model)
         
-        model.writeProblem("model" + str(iter) + ".cip",trans=False)
+        #model.writeProblem("model" + str(iter) + ".cip",trans=False)
         # model = model2
         b = np.empty((0,3), int)
         p = np.empty((0,3), int)
