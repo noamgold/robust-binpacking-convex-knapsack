@@ -41,57 +41,6 @@ def FFD(s, B):
             remain.append(B-item)
     return sol
 
-U = {}
-# robust extensible bin packing problem
-def rebppinit(a_bar, a_hat, V, c):
-    model = Model("rebpp")
-    m = len(c)
-    n = len(a_bar)
-    
-    y,alpha_bar,z = {},{},{}
-    theta = model.addVar(vtype = "C", name = "theta")
-
-    # initialize variables
-    for j in range(m):
-        y[j] = model.addVar(vtype="B", name="y(%s)"%j)
-        alpha_bar[j] = model.addVar(vtype="C", name="alpha_bar(%s)"%j)
-        for i in range(n):
-            z[i,j] = model.addVar(vtype="B", name="z(%s,%s)"%(i,j))
-
-    # initialize constraints
-    for i in range(n): 
-        model.addCons(quicksum(z[i,j] for j in range(m)) == 1, "Assign(%s)"%i) #constraint 1b
-        for j in range(m):
-            model.addCons(z[i,j] <= y[j], "Strong(%s,%s)"%(i,j)) #constraint 1c
-    
-    for j in range(m):
-        model.addCons(quicksum(a_bar[i]*z[i,j] for i in range(n)) <= alpha_bar[j] + y[j] * V ) # moved y[j] * V to other side
-
-    model.addCons(quicksum(c[j]*alpha_bar[j] for j in range(m)) <= theta)
-
-    model.setObjective(quicksum(y[j] for j in range(m))+theta, "minimize")
-
-    # model.writeLP("initial_model.lp")
-
-    return model, theta, y, alpha_bar, z
-
-def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
-    """
-    used to recieve new model and alph
-    """
-
-    m = len(y)
-    n = len(a_bar)
-    model.freeTransform()
-
-    print("scenario_num: ", scenario_num)
-    for j in range(m):
-        alpha[j,scenario_num] = model.addVar(vtype="C",name="alpha(%s,%s)"%(j,scenario_num))
-        model.addCons(quicksum(z[i,j]*(a_bar[i]+a[i]) for i in range(n)) <= V*y[j] + alpha[j,scenario_num])
-
-    model.addCons(quicksum(c[j]*alpha[j,scenario_num] for j in range (m)) <= theta)
-    
-    return model, alpha
 
 def bpp(s,B):
     n = len(s)
@@ -295,23 +244,30 @@ def P_upper_bound(w,p,W):
         else:
             return p_bar
 
+# vector implementation of DP - cost version
 @jit(nopython=True)
 def for_loop_method_all_w(p,w,W):
-    
     n = len(p)
-    A = [0] * (W + 1)
-    B = [0] * (W + 1)
+    nn = len(w)
+    assert W > 0
+    assert n==nn and n > 1
+
+    A = np.zeros(W+1) #[0] * (W + 1)
+    B = np.zeros(W+1) #[0] * (W + 1)
     items = [[i for i in range(0)] for _ in range(W+1)] #used to initialize a 2d array
 
-    for k in range(n):
-        A = B.copy()
-        for weight in range(w[k], W + 1):
-            if A[weight - w[k]] + p[k] > A[weight]:
-                B[weight] = A[weight - w[k]] + p[k]
-                temp = items[weight-w[k]].copy()
-                temp.append(k)
-                items[weight] = temp
 
+    if min(w) <= W:
+        for k in range(n):
+            A = B.copy()
+            for weight in range(w[k], W + 1):
+                if A[weight - w[k]] + p[k] > A[weight]:
+                    B[weight] = A[weight - w[k]] + p[k]
+                    temp = items[weight-w[k]].copy()
+                    temp.append(k)
+                    items[weight] = temp
+    #if not np.any(B):
+    #    raise Exception("zero B at the end of knapsack DP")
     return B, items
 
 @jit(nopython=True)
