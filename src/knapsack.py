@@ -1,5 +1,7 @@
 from pyscipopt import Model, quicksum
 from numba import jit
+from numba.typed import List
+
 import random
 import time
 import numpy as np
@@ -8,7 +10,7 @@ np.random.seed(0)
 W = 8
 w = [1,2,6, 2]
 p = [2,3,6, 3]
-k = 3
+#k = 3
 P = sum(p)
 
 def RandomBinPacking(n, B):
@@ -244,37 +246,82 @@ def P_upper_bound(w,p,W):
         else:
             return p_bar
 
-# vector implementation of DP - cost version
 @jit(nopython=True)
-def for_loop_method_all_w(p,w,W):
+def for_loop_method_all_w_save_all(p,w,W,B_all):
+    n = len(p)
+    #B_all = np.zeros((W+1,n),dtype=float)
+    for k in range(0, n):
+        if k >= 1:
+            #np.copyto(B_all[k,:],B_all[k-1,:])
+            B_all[k, :] = B_all[k-1,:].copy()
+        if p[k] > 0:
+            for weight in range(w[k], W + 1):
+                if k == 0:
+                    B_all[0,weight] = p[0]
+                else:
+                    if B_all[k-1,weight - w[k]] + p[k] > B_all[k-1,weight]:
+                        B_all[k,weight] = B_all[k-1,weight - w[k]] + p[k]
+
+
+# vector implementation of DP - cost version
+# save B and items after item i in addition to final ones, start from i_skip + 1 and save at
+@jit(nopython=True)
+def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_items = True):
+#def for_loop_method_all_w(p, w, W, B_in=np.array([],dtype=float), items_in=[List().append(-1) for _ in range(W+1)], i_skip=int(-1)):
     n = len(p)
     nn = len(w)
     assert W > 0
-    assert n==nn and n > 1
-
-    A = np.zeros(W+1) #[0] * (W + 1)
+    if n != nn:
+        raise Exception("n!=n")
     B = np.zeros(W+1) #[0] * (W + 1)
     items = [[i for i in range(0)] for _ in range(W+1)] #used to initialize a 2d array
+    #items_all = np.full([W+1,n],[-1])  #[[[i for i in range(0)] for _ in range(W+1)] for _ in range(n)]
 
-
-    if min(w) <= W:
-        for k in range(n):
+    if np.min(w) <= W:
+        if len(B_in) > 0 and i_skip >= 0:
+           B = B_in.copy()
+           #print("copied B")
+           #items = items_in.copy()
+        else:
+          i_skip = -1
+        for k in range(i_skip+1,n):
+            if p[k] == 0:
+                continue
             A = B.copy()
             for weight in range(w[k], W + 1):
                 if A[weight - w[k]] + p[k] > A[weight]:
                     B[weight] = A[weight - w[k]] + p[k]
-                    temp = items[weight-w[k]].copy()
-                    temp.append(k)
-                    items[weight] = temp
+                    if return_items:
+                        items[weight] = [*items[weight-w[k]], k] # items[weight-w[k]] + [k]#[*items[weight-w[k]], k]
+            #if save_all:
+            #    B_all[:,i] = B.copy()
+            #    items_all[i] = items.copy()
     #if not np.any(B):
     #    raise Exception("zero B at the end of knapsack DP")
-    return B, items
 
-@jit(nopython=True)
-def for_loop_method(p,w,W):
-    B, items = for_loop_method_all_w(p,w,W)
-    return B[W]
-    
+    return B, items#, B_all, items_all
+
+#@jit(nopython=True)
+#def for_loop_method(p,w,W):
+#    B, items = for_loop_method_all_w(p,w,W)
+#    return B[W]
+
+def generate_random_instance(k_random, R, inversely_cor=True):
+    b_random = np.zeros(k_random, dtype=int)
+    p_random = np.zeros(k_random, dtype=float)
+    if inversely_cor:
+        p_random = np.random.rand(k_random)*R
+        p_random = np.ceil(p_random) #np.array(np.ceil(p_random), dtype='i')
+        for j in range(k_random):
+            b_random[j] = p_random[j] + int(R / 10)  # inverse strongly correlated
+    else:  # almost strongly correlated
+        b_random = np.random.rand(k_random)*(R-1)
+        b_random = 1+(np.ceil(b_random)).astype(int)
+        for j in range(k_random):
+            p_random[j] = (random.randint(math.floor(b_random[j]+R/10-R/500),math.ceil(b_random[j]+R/10+R/500))).astype(float)
+    return p_random,b_random
+
+
 def for_loop_method_profit(P,p,w,W):
     n = len(p)
     B = [float('inf')] * (P + 1)
@@ -319,7 +366,8 @@ if __name__ == "__main__":
     for i in range(10): # number of trials to average out on
         print(i) # to see what iteration it's on
         R = 1000
-        k_random = 500 # number of items
+        k_random = 1 #500 # number of items
+        n = k_random
         w_random = []
         
 
@@ -369,7 +417,8 @@ if __name__ == "__main__":
 
         for_start_process = time.process_time()
         for_start_elapsed = time.time()
-        for_star = for_loop_method(p_random, w_random, W_random)
+        for_star = for_loop_method_all_w(np.array(p_random), np.array(w_random), W_random, np.array([],dtype=float), #[List().append(-1) for _ in range(1)],
+                                         int(-1))
         for_stop_process = time.process_time()
         for_stop_elapsed = time.time()
         for_time_process.append(for_stop_process - for_start_process)

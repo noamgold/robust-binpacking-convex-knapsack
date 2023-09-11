@@ -132,7 +132,7 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
         print("")
     # if we use the dp method
     else:
-        p_star, items, i_max = convex_pw_knapsack_dp(p,b,Omega)
+        p_star, items, i_max = convex_pw_knapsack_dp(p,b,Omega,True) # true since y intercept is nonzero
         fullDevSum = 0
         for item in items:
             for i in range(n):
