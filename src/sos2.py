@@ -104,7 +104,12 @@ def p_eval(b_row, p_row, w):
         # print("fraction: ", fraction)
         return (1-fraction) * p_row[left_index] + fraction * p_row[right_index]
 
-
+@jit(nopython=True)
+def sort_instance_by_slopes(p, b):
+    dp_db = (p[:,2]-p[:,1])/(b[:,2]-b[:,1])
+    indexes = np.argsort(dp_db)
+    indexes = np.flip(indexes) # need them in decreasing order
+    return p[indexes,:], b[indexes,:]
 
 
 #need to pull out indices of items used in final knapsack in addition with imax
@@ -183,61 +188,58 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
 # print(b[1,:])
 # print(np.searchsorted(b[1],2.5))
 
-
-
 if __name__ == "__main__":
     random.seed(101)
-    R = 100
     #print(p_eval([0,1,4],[0,0,5],4))
+    for R in [100,1000,10000]:
+        for k_random in [50, 100, 150, 200, 250, 300]:
+            sos2_time_process = []
+            sos2_time_elapsed = []
+            convex_time_process = []
+            convex_time_elapsed = []
+            fin_sos2 = []
+            fin_convex = []
 
-    for k_random in [150]:#[250, 300]: #[50, 100, 150, 200, 250, 300]:
-        sos2_time_process = []
-        sos2_time_elapsed = []
-        convex_time_process = []
-        convex_time_elapsed = []
-        fin_sos2 = []
-        fin_convex = []
+            for i in range(1,30):
+                b = np.empty((0,3), int)
+                p = np.empty((0,3),float)
+                p_random,b_random = generate_random_instance(k_random,R,True)
+                for p_val in p_random:
+                    p = np.append(p, np.array([[0, 0, p_val]]), axis=0)
 
-        for i in range(1,30):
-            b = np.empty((0,3), int)
-            p = np.empty((0,3),float)
-            p_random,b_random = generate_random_instance(k_random,R,True)
-            for p_val in p_random:
-                p = np.append(p, np.array([[0, 0, p_val]]), axis=0)
-            
-            for b_val in b_random:
-                b = np.append(b, np.array([[0, random.randint(1,b_val-1), b_val]]), axis = 0)
+                for b_val in b_random:
+                    b = np.append(b, np.array([[0, random.randint(1,b_val-1), b_val]]), axis = 0)
 
-            #print(for_loop_method_all_w(p, b, 63,-1,[i for i in range(1)], [[i for i in range(1)] for _ in range(1)], -1))
-            W = int(math.ceil((5+i*3)/101 * sum(b_random)))
+                #print(for_loop_method_all_w(p, b, 63,-1,[i for i in range(1)], [[i for i in range(1)] for _ in range(1)], -1))
+                W = int(math.ceil((5+i*3)/101 * sum(b_random)))
 
-            (sos2_val,sos_items,sos_imax, solve_time, cpu_time) = sos2(p,b,W)
-            if __DEBUG_2:
-                print("sos2 objVal=", sos2_val)
-            sos2_time_process.append(cpu_time)
-            sos2_time_elapsed.append(solve_time)
+                (sos2_val,sos_items,sos_imax, solve_time, cpu_time) = sos2(p,b,W)
+                if __DEBUG_2:
+                    print("sos2 objVal=", sos2_val)
+                sos2_time_process.append(cpu_time)
+                sos2_time_elapsed.append(solve_time)
 
-            convex_start_process = time.process_time()
-            convex_start_elapsed = time.time()
-            convex_val,items,imax = convex_pw_knapsack_dp(p,b,W)
-            convex_end_process = time.process_time()
-            convex_end_elapsed = time.time()
-            convex_time_process.append(convex_end_process - convex_start_process)
-            convex_time_elapsed.append(convex_end_elapsed - convex_start_elapsed)
+                convex_start_process = time.process_time()
+                convex_start_elapsed = time.time()
+                p,b=sort_instance_by_slopes(p,b)  # sort instance for linear speed up
+                convex_val,items,imax = convex_pw_knapsack_dp(p,b,W)
+                convex_end_process = time.process_time()
+                convex_end_elapsed = time.time()
+                convex_time_process.append(convex_end_process - convex_start_process)
+                convex_time_elapsed.append(convex_end_elapsed - convex_start_elapsed)
 
-            if abs(sos2_val-convex_val)/sos2_val > 1e-4:
-                print("sos2 objval: ", sos2_val, " DP val: ", convex_val)
-                print("W=", W, " sos_imax=", sos_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sos_items)
-                raise Exception("different obj vals")
+                if abs(sos2_val-convex_val)/sos2_val > 1e-4 and int(sos2_time_elapsed[-1]) < 3599:
+                    print("sos2 objval: ", sos2_val, " DP val: ", convex_val)
+                    print("W=", W, " sos_imax=", sos_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sos_items)
+                    raise Exception("different obj vals")
 
-            fin_sos2.append(sos2_val)
-            fin_convex.append(convex_val)
+                fin_sos2.append(sos2_val)
+                fin_convex.append(convex_val)
         # print("p: ",p)
         # print("b: ",b)
         # print("fin_sos2: ", fin_sos2)
         # print("fin_convex: ", fin_convex)
-
-        print(k_random, " & ", f"{sum(sos2_time_process)/float(len(fin_sos2)):.2f}", " & ",  f"{max(sos2_time_process):.2f}" , " & ",  f"{sum(convex_time_process)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
-        print(k_random, " & ", f"{sum(sos2_time_elapsed)/float(len(fin_sos2)):.2f}", " & ", f"{max(sos2_time_elapsed):.2f}" , " & ", len([x for x in sos2_time_elapsed if x>3599]), " & ",  f"{sum(convex_time_elapsed)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x>3599]) )
+            print(k_random, " & ", f"{sum(sos2_time_process)/float(len(fin_sos2)):.2f}", " & ",  f"{max(sos2_time_process):.2f}" , " & ",  f"{sum(convex_time_process)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
+            print(k_random, " & ", f"{sum(sos2_time_elapsed)/float(len(fin_sos2)):.2f}", " & ", f"{max(sos2_time_elapsed):.2f}" , " & ", len([x for x in sos2_time_elapsed if x>3599]), " & ",  f"{sum(convex_time_elapsed)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x>3599]) )
 
     # print(p_eval(b,p,6,2))

@@ -266,7 +266,7 @@ def for_loop_method_all_w_save_all(p,w,W,B_all):
 # vector implementation of DP - cost version
 # save B and items after item i in addition to final ones, start from i_skip + 1 and save at
 @jit(nopython=True)
-def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_items = True):
+def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_items = True, sorted_two_piece = True):
 #def for_loop_method_all_w(p, w, W, B_in=np.array([],dtype=float), items_in=[List().append(-1) for _ in range(W+1)], i_skip=int(-1)):
     n = len(p)
     nn = len(w)
@@ -284,7 +284,10 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
            #items = items_in.copy()
         else:
           i_skip = -1
-        for k in range(i_skip+1,n):
+        i_max = n
+        if sorted_two_piece:
+            i_max = i_skip+2
+        for k in range(i_skip+1,i_max):
             if p[k] == 0:
                 continue
             A = B.copy()
