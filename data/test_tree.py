@@ -106,7 +106,7 @@ X.info()
 n = 1
 
 ##  results = xgb.cv(params=params, dtrain=alldata, num_boost_round=n, nfold=5, metrics={"rmse"}) #evals=evals)
-dt = DecisionTreeRegressor(max_depth=3)
+dt = DecisionTreeRegressor(max_depth=3,min_samples_leaf=70)
 ##print(results)
 dt_fit = dt.fit(X, y)
 
@@ -165,14 +165,17 @@ X["ahat"] = ahat - a
 X["ADMISSION_NO"] = admit_no
 
 # X = X.sort_values("ADMISSION_NO")
+X["label"] = y_class
+X["SurgeryLength"] = y
+X.to_csv("Dep13300with_a_ahat_test_withlabel.csv",mode='w')
+#####X.sort_values(by = "OPR_DATE", inplace = True)
 
-X.to_csv("Dep13300with_a_ahat_test.csv")
-X.sort_values(by = "OPR_DATE", inplace = True)
 
-
-fig, ax = plt.subplots(figsize=(20, 20))
+#fig, ax = plt.subplots(figsize=(20, 20))
+plt.figure(figsize=(20,20))
 tree.plot_tree(dt,feature_names=features)
 plt.show()
+plt.savefig('tree_high_dpi', dpi=100)
 
 ##fig, ax = plt.subplots(figsize=(20, 20))
 ##xgb.plot_tree(model, num_trees=0, ax=ax)

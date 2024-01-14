@@ -9,6 +9,8 @@ import pandas as pd
 """
 sample small test case
 """
+__DEBUG_2 = False
+
 a_hat = [2,2,2,2]
 a_bar = [2,2,3,1]
 Omega = 3 # also B
@@ -89,8 +91,8 @@ def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
     m = len(y)
     n = len(a_bar)
     model.freeTransform()
-
-    print("scenario_num: ", scenario_num)
+    if __DEBUG_2:
+        print("scenario_num: ", scenario_num)
     for j in range(m):
         alpha[j, scenario_num] = model.addVar(vtype="C", name="alpha(%s,%s)" % (j, scenario_num))
         model.addCons(quicksum(z[i, j] * (a_bar[i] + a[i]) for i in range(n)) <= V * y[j] + alpha[j, scenario_num])
@@ -107,44 +109,36 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
     n = len(a_hat)
     m = len(p)
     a = [0] * n
-    t_val1 = [0] * m
-    t_val2 = [0] * m
+    #t_val1 = [0] * m
+    #t_val2 = [0] * m
     p_star = None
     items = []
     i_max = None
     # if we use the scip version
     if sos:
-        p_star, knapsack_model, t, _ = sos2(p,b,Omega)
-        for j in range(m):
-            t_val1 = knapsack_model.getVal(t[j,1])
-            t_val2 = knapsack_model.getVal(t[j,2])
-            print("t_values:",t_val1,t_val2, end="; ")
-        if t_val2 == 1:
-            for i in range(n):
-                if model.getVal(z[i,j]) == 1:
-                    a[i] = a_hat[i]
-        elif t_val1 > 0:
-            a_hat_total = b[j,1] * t_val1 + b[j,2] * t_val2
-            for i in range(n):
-                if model.getVal(z[i,j]) == 1 and a_hat_total > 0:
-                    a[i] = min(a_hat[i],a_hat_total)
-                    a_hat_total -= a[i]
-        print("")
-    # if we use the dp method
+        if __DEBUG_2:
+            p_star, items, i_max = convex_pw_knapsack_dp(p, b, Omega, True)  # true
+            print("p_star knapsack = ", p_star, " items=", items, " i_max=", i_max)
+        p_star, items, i_max, _, _ = sos2(p, b, Omega)
+        if __DEBUG_2:
+            print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
     else:
         p_star, items, i_max = convex_pw_knapsack_dp(p,b,Omega,True) # true since y intercept is nonzero
-        fullDevSum = 0
-        for item in items:
-            for i in range(n):
-                if model.getVal(z[i,item]) == 1:
-                    a[i] = a_hat[i]
-                    fullDevSum += a_hat[i]
-        remDev = Omega - fullDevSum
-        if i_max is not None:
-            for i in range(n):
-                if model.getVal(z[i,i_max]) == 1:
-                    a[i] = min(a_hat[i],remDev)
-                    remDev -= a[i]
+    fullDevSum = 0
+    for item in items:
+        for i in range(n):
+            if model.getVal(z[i,item]) == 1:
+                a[i] = a_hat[i]
+                fullDevSum += a_hat[i]
+    remDev = Omega - fullDevSum
+    if i_max is not None:
+        for i in range(n):
+            if model.getVal(z[i,i_max]) == 1:
+                a[i] = min(a_hat[i],remDev)
+                remDev -= a[i]
+    if p_star > 0 and remDev > 0:
+        print ("items=",items, " i_max=", i_max, " remDev=", remDev, " p=", p, " b=", b)
+        raise ValueError("remDev>0")
     return p_star, a
 
 def print_sol(model):

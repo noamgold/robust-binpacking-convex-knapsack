@@ -24,6 +24,8 @@ n = len(p)
 __DEBUG = True
 __DEBUG_2 = False
 
+NZ_TOL = 1e-10
+
 def sos2(p,b,B):
     if __DEBUG_2:
         print("sos2....")
@@ -59,23 +61,18 @@ def sos2(p,b,B):
     fin = []
     i_max = None
     for i in range(n):
-        for j in range(m):
-            x = model.getVal(t[i,j])
-            #print("x: ", i,j)
-            # print(x)
-            if x != 0:
-                if j > 0 and j < m - 1:
+        for j in range(1,m):
+            if p[i,m-1]>0 and model.getVal(t[i,j]) > NZ_TOL:
+                if j < m - 1:
                     i_max = i
-                if j > 0:
-                    fin.append((i,j))
+                    break
+                elif j == m-1:
+                    fin.append(i)
     status = model.getStatus()
-    if status != "optimal" and status!="timelimit":
-        #print("Optimal value: ", model.getObjVal())
-        #print("objects: ", fin)
-    #else:
+    if status != "optimal": # and status!="timelimit":
         raise Exception("SoS solution is not optimal: " + status)
     if __DEBUG_2:
-        print("sos i_max=",i_max)
+        print(" objVal=", model.getObjVal(), " sos i_max=", i_max)
     return model.getObjVal(), fin, i_max, solve_time, sos2_time_process
 
 # p_eval - evaluate piecewise function: return profit value for item k, for a given x coordinate w
@@ -171,8 +168,10 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
                 #print("i=", i, " merged_val=", merged_val, " peval=", p_eval(b[i,:],p[i,:],W-w))
                 w_max = w
                 i_max = i
-
-    profit_array[int(i_max)] = 0
+    if __DEBUG_2:
+        print("convex_pw_knapsack_dp i_max=", i_max)
+    if i_max is not None:
+        profit_array[int(i_max)] = 0
     B, items_max = for_loop_method_all_w(profit_array, b_array, W, B, -1, True)  # items_all[i-1], skip_idx)
     #print("i_max: ",i_max)
     #print(max_val)
