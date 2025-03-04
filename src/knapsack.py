@@ -317,11 +317,22 @@ def generate_random_instance(k_random, R, inversely_cor=True):
         p_random = np.ceil(p_random) #np.array(np.ceil(p_random), dtype='i')
         for j in range(k_random):
             b_random[j] = p_random[j] + int(R / 10)  # inverse strongly correlated
-    else:  # almost strongly correlated
+    else:  # almost strongly correlated   #mstr
+        d = 6
+        k1 = 3*R/10
+        k2 = 2*R/10
+        #b_random = 1+np.random.rand(k_random) * (R-1)
+        #b_random = np.ceil(b_random).astype(int)
+        #b_div_6 = b_random.astype(int)%d
+        #b_div_6[b_div_6 > 0] = -1
+        #b_div_6[b_div_6==0] = 1
+        #b_div_6[b_div_6 == -1] = 0
+        #p_random = b_random + k2
+        #p_random[b_div_6] = b_random[b_div_6] +k1
         b_random = np.random.rand(k_random)*(R-1)
         b_random = 1+(np.ceil(b_random)).astype(int)
         for j in range(k_random):
-            p_random[j] = (random.randint(math.floor(b_random[j]+R/10-R/500),math.ceil(b_random[j]+R/10+R/500))).astype(float)
+            p_random[j] = random.randint(math.floor(b_random[j]+R/10-R/500),math.ceil(b_random[j]+R/10+R/500))
     return p_random,b_random
 
 

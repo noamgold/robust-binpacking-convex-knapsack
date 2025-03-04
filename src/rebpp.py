@@ -2,8 +2,8 @@ from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 #from knapsack import rebppinit, update_rebpp
 from sos2 import sos2, convex_pw_knapsack_dp
 import numpy as np
-import csv
 import pandas as pd
+import pyomo.environ as pe
 
 
 """
@@ -16,6 +16,16 @@ a_bar = [2,2,3,1]
 Omega = 3 # also B
 V = 8
 VIOL_TOL = 1e-6
+INT_TOL = 1e-3
+
+MAX_SCENRIOS = 1e4
+
+
+def getVal(model, var):
+    return var
+
+def getVars(model):
+    return model.component_data_objects(model, pe.Var,active=False)
 
 #first fit decreasing heuristic for robust bin packing with omega-uncertainty
 def FFD_RBPP(a_bar, a_hat, V, Omega_in):
@@ -46,6 +56,47 @@ def FFD_RBPP(a_bar, a_hat, V, Omega_in):
 
 
 U = {}
+
+# robust extensible bin packing problem model init
+def rebppinit_pyomo(a_bar, a_hat, V, c):
+    m = len(c)
+    n = len(a_bar)
+    mdl = pe.ConcreteModel()
+    pe.ConcreteModel.getVal = classmethod(getVal)
+    pe.ConcreteModel.getVars = classmethod(getVars)
+
+    mdl.I = range(n)
+    mdl.J = range(m)
+    mdl.theta = pe.Var(domain=pe.NonNegativeReals)
+    mdl.y = pe.Var(mdl.J,domain=pe.Binary)
+    mdl.z = pe.Var(mdl.I,mdl.J,domain=pe.Binary)
+
+    mdl.sn = pe.Param(initialize = 1,domain=pe.NonNegativeIntegers,mutable=True)
+    #mdl.scenarios = pe.Set(initialize=mdl.sn[])
+    #mdl.alpha_bar = pe.Var(mdl.J,pe.NonNegativeReals)
+    mdl.alpha_bar = pe.Var(mdl.J,domain=pe.NonNegativeReals,dense=False)
+    mdl.alpha = pe.Var(mdl.J,pe.NonNegativeIntegers,domain=pe.NonNegativeReals,dense=False)
+
+    def assignRule(mdl,i):
+        return sum(mdl.z[i, j] for j in mdl.J) == 1
+    mdl.assignCons = pe.Constraint(mdl.I,rule=assignRule)
+
+    def capacityRule(mdl, j):
+        return sum(a_bar[i]*mdl.z[i, j] for i in mdl.I) <= V*mdl.y[j]+mdl.alpha_bar[j]
+    mdl.capacityCons = pe.Constraint(mdl.J, rule=capacityRule)
+
+    def indRule(mdl,i,j):
+        return (mdl.z[i,j] <= mdl.y[j])
+    mdl.indCons = pe.Constraint(mdl.I,mdl.J,rule=indRule)
+
+    mdl.objCons = pe.Constraint(expr = sum(c[j]*mdl.alpha_bar[j] for j in mdl.J)<= mdl.theta)
+
+    mdl.obj = pe.Objective(expr = sum(mdl.y[j] for j in mdl.J) + mdl.theta, sense=pe.minimize)
+
+    mdl.scuts = pe.ConstraintList()
+
+    return mdl, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
+
 
 
 # robust extensible bin packing problem model init
@@ -83,11 +134,28 @@ def rebppinit(a_bar, a_hat, V, c):
     return model, theta, y, alpha_bar, z
 
 
+def update_rebpp_pyomo(mdl, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
+    """
+    used to recieve new model and alph
+    """
+    if __DEBUG_2:
+        print("scenario_num: ", scenario_num)
+
+    #mdl.scenarios = mdl.scenarios | pe.Set(initialize=[scenario_num])
+    mdl.sn = scenario_num
+    for j in mdl.J:
+        #mdl.alpha_bar[j, scenario_num] #= mdl.add_column(mdl,0,[],[])
+        mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
+
+    mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
+
+    return mdl, mdl.alpha
+
+
 def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
     """
     used to recieve new model and alph
     """
-
     m = len(y)
     n = len(a_bar)
     model.freeTransform()
@@ -194,7 +262,7 @@ if __name__ == "__main__":
             u[j] = 0
             for i in range(n):
                 # print("loop problem")
-                if model.getVal(z[i,j]) == 1:
+                if model.getVal(z[i,j]) > 1 - INT_TOL:
                     f[j] += a_bar[i]
                     u[j] += a_hat[i]
             b = np.append(b, np.array([[0, max(V-f[j],0), max(u[j]-V+f[j],0)]]), axis=0)
@@ -211,7 +279,6 @@ if __name__ == "__main__":
         if p_star <= theta_star + VIOL_TOL:
             print_sol(model)
             break
-
         model,alpha = update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num)
         scenario_num += 1
         # model.writeLP("after_update_model.lp")

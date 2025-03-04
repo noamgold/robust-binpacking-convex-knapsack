@@ -12,17 +12,31 @@ import statistics as stat
 
 __DEBUG = False
 #if __name__ == "__main__":
-VIOL_TOL = 1e-6
 
+VIOL_TOL = 1e-3
+INT_TOL = 1e-3
+TIMELIMIT = 3600
 devProp = 0.2
-#a_hat = []
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
 rob_level_mult = 0.1 #0 #0.05
 # Four deadlines are generated for each instance, which are equal to a fraction of the sum of the worst-case job processing times; the fractions considered are 1/4, 1/6,1/8 and 1/10
 V_mult = 1/8
-
 NZ_TOl = 1e-7
+GAPVAL1 = 0.2
+GAPVAL2 = 5e-2
+
+
+#VIOL_TOL = 1e-6
+#devProp = 0.2
+#num_tests = 10
+# Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
+#rob_level_mult = 0.1 #0 #0.05
+# Four deadlines are generated for each instance, which are equal to a fraction of the sum of the worst-case job processing times; the fractions considered are 1/4, 1/6,1/8 and 1/10
+#V_mult = 1/8
+#NZ_TOl = 1e-7
+#INT_TOL = 1e-3
+#gapVal = 0.2
 
 runTimes = []
 runIter = []
@@ -53,38 +67,39 @@ for instNum in range(num_tests):
     alpha = {}
     scenario_num = 0
 
+    gapVal = GAPVAL1
     start = time.time()
     model, theta, y, f_bar, z = rebppinit(a_bar, a_hat, V, c)
     model.setIntParam("display/verblevel", 2)
     model.setIntParam("display/freq", 10000)
-    gapVal = 0.2
-    model.setRealParam('limits/gap', gapVal)
+    #model.hideOutput
 
-    #model.hideOutput()
     it = 0
     numBins = 0
     while True:
         f = {}
         u = {}
+        model.setRealParam('limits/gap', gapVal)
         model.optimize()
         # print_sol(model)
         # model.writeProblem("model" + str(iter) + ".cip",trans=False)
         # model = model2
         b = np.zeros((m, 3), int)
         p = np.zeros((m, 3), float)
-        #if model.getStatus() != "optimal":
-        #    print("Error (suboptimal)")
+        solStatus = model.getStatus()
+        if solStatus != "optimal" and solStatus != "gaplimit":
+            print("Error (suboptimal):", solStatus)
         #    raise ValueError
         theta_star = model.getVal(theta)
         numBins = 0
         for j in range(m):
-            if model.getVal(y[j]) == 1:
+            if model.getVal(y[j]) > 1-INT_TOL:
                 f[j] = 0
                 u[j] = 0
                 numBins += 1
                 for i in range(n):
                     # print("loop problem")
-                    if model.getVal(z[i, j]) == 1:
+                    if model.getVal(z[i, j]) > 1-INT_TOL:
                         f[j] += a_bar[i]
                         u[j] += a_hat[i]
                 b[j,1] = max(V - f[j], 0)
@@ -105,12 +120,13 @@ for instNum in range(num_tests):
         print("iteration: ", it, " p_star val: ", p_star, " theta_star_val: ", theta_star, " ******")
 
         if p_star <= theta_star + VIOL_TOL:
-            if gapVal == 0:
+            if gapVal == GAPVAL2:
                 print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
                 print_sol(model)
                 break
             else:
-                gapVal = 0
+                gapVal = GAPVAL2
+                print("setting gapVal: ", gapVal)
 
         model, alpha = update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num)
         scenario_num += 1
