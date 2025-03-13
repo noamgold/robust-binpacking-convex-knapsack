@@ -1,8 +1,8 @@
 #import time
 
 import numpy as np
-from numba.typed import List
-from numba import jit, config
+#from numba.typed import List
+#from numba import jit, config
 #config.DISABLE_JIT = True
 import numpy as np
 import pandas as pd
