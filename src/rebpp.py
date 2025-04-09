@@ -1,28 +1,40 @@
+from fontTools.misc.cython import returns
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 #from knapsack import rebppinit, update_rebpp
 from sos2 import sos2, convex_pw_knapsack_dp
 import numpy as np
 import pandas as pd
 import pyomo.environ as pe
+from pyomo.opt import SolverStatus, TerminationCondition
+import math
+import time
 
-
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabel.csv"
+gapVal = 0.1
 """
 sample small test case
 """
+__DEBUG = False
 __DEBUG_2 = False
-
 a_hat = [2,2,2,2]
 a_bar = [2,2,3,1]
 Omega = 3 # also B
 V = 8
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
+GAPVAL1 = 0.4
+GAPVAL2 = 0.01
+TIME_LIMIT = 3600
 
 MAX_SCENRIOS = 1e4
 
+import os  # change current path to the file's directory
+abspath = os.path.abspath(__file__)
+dname = os.path.dirname(abspath)
+os.chdir(dname)
 
 def getVal(model, var):
-    return var
+        return var.value
 
 def getVars(model):
     return model.component_data_objects(model, pe.Var,active=False)
@@ -95,7 +107,7 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
 
     mdl.scuts = pe.ConstraintList()
 
-    return mdl, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
+    return mdl #, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
 
 
 
@@ -134,7 +146,7 @@ def rebppinit(a_bar, a_hat, V, c):
     return model, theta, y, alpha_bar, z
 
 
-def update_rebpp_pyomo(mdl, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
+def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num):
     """
     used to recieve new model and alph
     """
@@ -195,17 +207,17 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
     fullDevSum = 0
     for item in items:
         for i in range(n):
-            if model.getVal(z[i,item]) == 1:
+            if model.getVal(z[i,item]) >= 1 - INT_TOL:
                 a[i] = a_hat[i]
                 fullDevSum += a_hat[i]
     remDev = Omega - fullDevSum
     if i_max is not None:
         for i in range(n):
-            if model.getVal(z[i,i_max]) == 1:
+            if model.getVal(z[i,i_max]) >= 1 - INT_TOL:
                 a[i] = min(a_hat[i],remDev)
                 remDev -= a[i]
     if p_star > 0 and remDev > 0:
-        print ("items=",items, " i_max=", i_max, " remDev=", remDev, " p=", p, " b=", b)
+        print ("items=",items, " i_max=", i_max, " remDev=", remDev, " p=", p, " b=", b, " Omega=", Omega, " p_star=", p_star)
         raise ValueError("remDev>0")
     return p_star, a
 
@@ -219,8 +231,124 @@ def print_sol(model):
             print(var,":",model.getVal(var), end=" ")
     print("\nmodel obj val: ",model.getObjVal())
 
+
+def solve_instance(a_bar, a_hat, V, c):
+    n = len(a_bar)
+    m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
+    print("Read file with ", n, " items", " m=", m)
+
+    alpha = {}
+    scenario_num = 0
+    opt = pe.SolverFactory('gurobi_direct')
+    opt.options['TimeLimit'] = TIME_LIMIT
+    gapVal = GAPVAL1
+    start = time.time()
+    # model, theta, y, f_bar, z = rebppinit_pyomo(a_bar, a_hat, V, c)
+    model = rebppinit_pyomo(a_bar, a_hat, V, c)
+
+    it = 0
+    numBins = 0
+    masterTime = 0
+    rTime = 0
+    timeL = False
+    p_star_old = math.inf
+    a_old = []
+    # p_old = []
+    # b_old = []
+    z_old = []
+
+    while True:
+        f = {}
+        u = {}
+        opt.options["MIPGap"] = gapVal
+        masterStart = time.time()
+        results = opt.solve(model, tee=False)
+        masterTime += time.time() - masterStart
+        status = results.Solver.status  # results.Solver()['Termination condition'].value
+        if status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
+            print('error occurred, status: {status}.  Check model!')
+        if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
+            timeL = True
+            break
+
+        b = np.zeros((m, 3), int)
+        p = np.zeros((m, 3), float)
+        theta_star = model.theta.value
+        numBins = 0
+        for j in range(m):
+            if model.y[j].value > 1 - INT_TOL:
+                f[j] = 0
+                u[j] = 0
+                numBins += 1
+                for i in range(n):
+                    # print("loop problem")
+                    if model.z[i, j].value > 1 - INT_TOL:
+                        f[j] += a_bar[i]
+                        u[j] += a_hat[i]
+                b[j, 1] = max(min(V - f[j], u[j]), 0)
+                b[j, 2] = u[j]  # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
+                p[j, 0] = c[j] * max(f[j] - V, 0)
+                p[j, 1] = p[j, 0]
+                # p[j,2] = c[j] * max(u[j] - V + f[j], 0)
+                p[j, 2] = c[j] * (b[j, 2] - b[j, 1] + max(f[j] - V, 0))
+            # p = np.append(p, np.array([[c[j] * max(f[j] - V, 0), c[j] * max(f[j] - V, 0), c[j] * max(u[j] - V + f[j], 0)]]), axis=0)
+        # print(b)
+        # print(p)
+        if __DEBUG:
+            print("Before running convex knapsack, Omega=", Omega, " p=", p, " b=", b)
+        p_star = 0
+        # if np.sum(p[:,2]) > NZ_TOl:
+        # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
+        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True)  # False)
+        p_star_0 = p_star
+
+        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + VIOL_TOL):
+            print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
+            print(a)
+            print(a_old)
+            # print(a_0)
+            print(p)
+            print(b)
+            # print(p_old)
+            # print(b_old)
+            print(Omega)
+            for k in model.z.keys():
+                if abs(model.z[k].value) > 1e-2:
+                    print(model.z[k].getname(), model.z[k].value, end=' ')
+            print('')
+            print(z_old)
+            raise Exception("breaking..")
+
+        p_star_old = p_star
+        a_old = a
+        z_old = []
+        for k in model.z.keys():
+            if abs(model.z[k].value) > 1e-2:
+                z_old.append(model.z[k].getname())
+        it += 1
+        print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " ******")
+
+        rTime = time.time() - start
+        if rTime >= TIME_LIMIT:
+            print("time limit")
+            break
+        elif p_star <= theta_star + VIOL_TOL:
+            if gapVal == GAPVAL2:
+                print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
+                # print_sol(model)
+                break
+            else:
+                gapVal = GAPVAL2
+                print("setting gapVal: ", gapVal)
+        model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)
+        scenario_num += 1
+    runTime = time.time() - start
+    print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime)
+
 if __name__ == "__main__":
     # example problem
+
+    pe.ConcreteModel.getVal = classmethod(getVal)
 
     a_hat = []
     Omega = 240 # also B
@@ -229,57 +357,119 @@ if __name__ == "__main__":
     BEGIN = 0
     END = 50
 
-    rambam_data = pd.read_csv("../data/Dep13300with_a_ahat.csv")
+    rambam_data = pd.read_csv(FILENAME)
     a_bar = rambam_data["a"]
     a_hat = rambam_data["ahat"]
     a_bar = np.round(a_bar[BEGIN:END].to_numpy())
     a_hat = np.round(a_hat[BEGIN:END].to_numpy())
     a_bar = np.asarray(a_bar, dtype = 'int')
     a_hat = np.asarray(a_hat, dtype = 'int')
+    m = int(math.ceil(2 * (sum(a_bar) + Omega) / V))
+
+    solve_instance(a_bar, a_hat, V, c)
+    error("quit")
 
     m = len(c)
     n = len(a_bar)
     alpha = {}
     scenario_num = 0
-    model, theta, y, f_bar, z = rebppinit(a_bar,a_hat,V,c)
-    model.hideOutput()
+    #model, theta, y, f_bar, z = rebppinit(a_bar,a_hat,V,c)
+    model = rebppinit_pyomo(a_bar,a_hat,V,c)
+    theta = model.theta
+    #model.hideOutput()
     it = 0
+    opt = pe.SolverFactory('gurobi_direct')
+    p_star_old = 0
+    a_old = []
+    z_old = []
 
     while True:
         f = {}
         u = {}
-        model.optimize()
+        #model.optimize()
+        opt.options["MIPGap"] = gapVal
+        results = opt.solve(model, tee=False)
+
         #print_sol(model)
         #model.writeProblem("model" + str(iter) + ".cip",trans=False)
         # model = model2
-        b = np.empty((0,3), int)
-        p = np.empty((0,3), int)
-        if model.getStatus() != "optimal":
+        b = np.zeros((m, 3), int)  #empty((0,3), int)
+        p = np.zeros((m, 3), float)  #empty((0,3), int)
+#        if model.getStatus() != "optimal":
+        status = results.Solver.status  # results.Solver()['Termination condition'].value
+        if status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
             print("Error (suboptimal)")
             raise ValueError
-        for j in range(m):
-            f[j] = 0
-            u[j] = 0
-            for i in range(n):
-                # print("loop problem")
-                if model.getVal(z[i,j]) > 1 - INT_TOL:
-                    f[j] += a_bar[i]
-                    u[j] += a_hat[i]
-            b = np.append(b, np.array([[0, max(V-f[j],0), max(u[j]-V+f[j],0)]]), axis=0)
-            p = np.append(p, np.array([[c[j]*max(f[j]-V,0), c[j]*max(f[j]-V,0), c[j]*max(u[j]-V+f[j],0)]]), axis=0)
 
-        print(b)
-        print(p)
+        for j in range(m):
+            if model.getVal(model.y[j]) > 1 - INT_TOL:
+                f[j] = 0
+                u[j] = 0
+#                numBins += 1
+                for i in range(n):
+                    # print("loop problem")
+                    if model.getVal(model.z[i, j]) > 1 - INT_TOL:
+                        f[j] += a_bar[i]
+                        u[j] += a_hat[i]
+                b[j, 1] = max(min(V - f[j], u[j]), 0)
+                b[j, 2] = u[j]  # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
+                p[j, 0] = c[j] * max(f[j] - V, 0)
+                p[j, 1] = p[j, 0]
+                p[j, 2] = c[j] * (b[j, 2] - b[j, 1] + max(f[j] - V, 0))
+                assert p[j,2] >= p[j,1]
+                assert p[j,1] >= p[j,0]
+#            f[j] = 0
+#            u[j] = 0
+#            for i in range(n):
+#                if model.getVal(z[i,j]) > 1 - INT_TOL:
+#                    f[j] += a_bar[i]
+#                    u[j] += a_hat[i]
+#            b = np.append(b, np.array([[0, min(max(V-f[j],0),u[j]),u[j]]]),axis=0)
+#                                        #max(u[j]-V+f[j],0)]]), axis=0)   # 29/3 - added u[j] truncation in 2nd breakpoint
+#            p = np.append(p, np.array([[c[j]*max(f[j]-V,0), c[j]*max(f[j]-V,0), c[j]*max(u[j]-V+f[j],0)]]), axis=0)
+        #print(b)
+        #print(p)
         theta_star = model.getVal(theta)
-        
-        p_star,a = convex_pw_knapsack_wrapper(p,b,Omega,z,a_hat,model,False)
+        #print(model.z.extract_values())
+
+        p_star,a = convex_pw_knapsack_wrapper(p,b,Omega,model.z,a_hat,model,False)
         it += 1
         print("iteration: ", it, " p_star val: ", p_star, " theta_star_val: ",theta_star)
+        # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
 
+        p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True)  # False)
+
+        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + VIOL_TOL):
+            print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
+            print(a)
+            print(a_old)
+            # print(a_0)
+            print(p)
+            assert p[0,1]>=p[0,0]
+            print(b)
+            # print(p_old)
+            # print(b_old)
+            print(Omega)
+            for k in model.z.keys():
+                if abs(model.z[k].value) > 1e-2:
+                    print(model.z[k].getname(), model.z[k].value, end=' ')
+            print('')
+            print(z_old)
+            raise Exception("breaking..")
+
+        p_star_old = p_star
+        a_old = a
+        z_old = model.z.extract_values()
         if p_star <= theta_star + VIOL_TOL:
             print_sol(model)
             break
-        model,alpha = update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num)
+        #model,alpha = update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num)
+        model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a,scenario_num)
         scenario_num += 1
         # model.writeLP("after_update_model.lp")
         # def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar,z):
+
+    for k in model.z.keys():
+        if abs(model.z[k].value) > 1e-2:
+            print(model.z[k].getname(), model.z[k].value, end=' ')
+    print('')
