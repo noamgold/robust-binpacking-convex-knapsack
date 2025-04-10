@@ -15,7 +15,7 @@ __DEBUG = False
 
 VIOL_TOL = 1e-3
 INT_TOL = 1e-3
-TIMELIMIT = 3600
+TIMELIMIT = 3600.0
 devProp = 0.2
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
@@ -43,7 +43,7 @@ runIter = []
 runBins = []
 
 def read_instance(i):
-    test_data = pd.read_csv("../data/60/60_(1,20)_"+ str(i) +".txt",skiprows=[1])
+    test_data = pd.read_csv("../data/30/30_(1,20)_"+ str(i) +".txt",skiprows=[1])
     return test_data.iloc[:,0]
 
 #test_data = pd.read_csv("../data/ma30.csv")
@@ -72,6 +72,7 @@ for instNum in range(num_tests):
     model, theta, y, f_bar, z = rebppinit(a_bar, a_hat, V, c)
     model.setIntParam("display/verblevel", 2)
     model.setIntParam("display/freq", 10000)
+    model.setRealParam("limits/time", TIMELIMIT)
     #model.hideOutput
 
     it = 0
@@ -112,16 +113,17 @@ for instNum in range(num_tests):
         #print(p)
         if __DEBUG:
             print("Before running convex knapsack, Omega=", Omega, " p=", p, " b=", b)
-        p_star = 0
-        if np.sum(p[:,2]) > NZ_TOl:
-            p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, False)
+        #p_star = 0
+        #if np.sum(p[:,2]) > 0: #NZ_TOl:
+        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, False)
 
         it += 1
         print("iteration: ", it, " p_star val: ", p_star, " theta_star_val: ", theta_star, " ******")
 
+        # corrected 21/3
         if p_star <= theta_star + VIOL_TOL:
             if gapVal == GAPVAL2:
-                print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
+                print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL, " p_star=", p_star)
                 print_sol(model)
                 break
             else:

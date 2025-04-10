@@ -1,6 +1,5 @@
 from fontTools.misc.cython import returns
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
-#from knapsack import rebppinit, update_rebpp
 from sos2 import sos2, convex_pw_knapsack_dp
 import numpy as np
 import pandas as pd
@@ -9,8 +8,11 @@ from pyomo.opt import SolverStatus, TerminationCondition, SolutionStatus
 import math
 import time
 
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabel.csv"
-gapVal = 0.1
+#import os
+#os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad.csv"
+#"../data/Dep13300with_a_ahat_test_withlabel.csv"
+#gapVal = 0.1
 """
 sample small test case
 """
@@ -23,9 +25,9 @@ __DEBUG_2 = False
 #V = 8
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
-GAPVAL1 = 0.4
-GAPVAL2 = 0.05
-TIME_LIMIT = 3600
+GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
+GAPVAL2 = 0.1  # final optimality gap
+TIME_LIMIT = 10800
 
 MAX_SCENRIOS = 1e4
 
@@ -101,6 +103,10 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     def indRule(mdl,i,j):
         return (mdl.z[i,j] <= mdl.y[j])
     mdl.indCons = pe.Constraint(mdl.I,mdl.J,rule=indRule)
+
+    #def symbreak(mdl, j):
+    #    return (mdl.y[j] >= mdl.y[j+1])
+    #mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
 
     mdl.objCons = pe.Constraint(expr = sum(c[j]*mdl.alpha_bar[j] for j in mdl.J)<= mdl.theta)
 
@@ -265,13 +271,13 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
         masterTime += time.time() - masterStart
         soln = results.Solution
         status = results.Solver.status  # results.Solver()['Termination condition'].value
-        if status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
-            print('error occurred, status: {status}.  Check model!')
         if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
             print('time limit!')
             timeL = True
             return [], timeL
             break
+        elif status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
+            error('error occurred, status: {}.  Check model!'.format(status))
 
         b = np.zeros((m, 3), int)
         p = np.zeros((m, 3), float)
@@ -346,10 +352,10 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
         scenario_num += 1
     runTime = time.time() - start
     print(" elapsed time: ", runTime)
-    assign = []
+    assign = pd.DataFrame(columns=["patient", "shift"])
     for k in model.z.keys():
         if abs(model.z[k].value) > 1e-2:
-            assign.append(model.z[k].getname())
+            assign = pd.concat([assign,pd.DataFrame(np.array([[k[0], k[1]]]), columns=assign.columns)],ignore_index=True)
     return assign, timeL, runTime, masterTime, numBins, scenario_num
 
 if __name__ == "__main__":
@@ -358,24 +364,26 @@ if __name__ == "__main__":
     pe.ConcreteModel.getVal = classmethod(getVal)
 
     a_hat = []
-    Omega = 240 # also B
+    Omega = 3000 #3000 #240 # also B
     V = 480
-    c = [3e-3]*8 #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
     BEGIN = 0
-    END = 50
-
     rambam_data = pd.read_csv(FILENAME)
     a_bar = rambam_data["a"]
     a_hat = rambam_data["ahat"]
+    END = len(a_bar)
+
     a_bar = np.round(a_bar[BEGIN:END].to_numpy())
     a_hat = np.round(a_hat[BEGIN:END].to_numpy())
     a_bar = np.asarray(a_bar, dtype = 'int')
     a_hat = np.asarray(a_hat, dtype = 'int')
     m = int(math.ceil(2 * (sum(a_bar) + Omega) / V))
+    c = [0.005]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
 
-    assign = solve_instance(a_bar, a_hat, V, c)
+    assign,timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)
+    print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " num of scenarios: ", scenario_num)
     #error("quit")
     print(assign)
+    assign.to_csv("schedule.csv")
 
 """    m = len(c)
     n = len(a_bar)

@@ -23,9 +23,9 @@ num_tests = 10
 rob_level_mult = 0.1 #0 #0.05
 # Four deadlines are generated for each instance, which are equal to a fraction of the sum of the worst-case job processing times; the fractions considered are 1/4, 1/6,1/8 and 1/10
 V_mult = 1/8
-NZ_TOl = 1e-7
-GAPVAL1 = 0.4
-GAPVAL2 = 5e-2
+#NZ_TOl = 1e-7
+#GAPVAL1 = 0.4
+#GAPVAL2 = 5e-2
 
 
 
@@ -165,7 +165,7 @@ for sz in [30,60,90]:
         runTime = time.time()-start
         print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime) '''
 
-        if timeL == False and runTime < TIME_LIMIT-NZ_TOl:
+        if timeL == False and runTime < TIME_LIMIT-1e-6:
             runTimesWoTL.append(runTime)
             masterTimesWoTL.append(masterTime)
         runIter.append(scenario_num)

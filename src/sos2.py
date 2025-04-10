@@ -17,15 +17,15 @@ import pandas as pd
 from knapsack import for_loop_method_all_w, generate_random_instance, for_loop_method_all_w_save_all
 
 
-W = 10
-p = np.array([[0,0,6],
-     [0,0,4],
-     [0,0,5]])
-b = np.array([[0,2,4],
-     [0,2,3],
-     [0,2,4]])
+#W = 10
+#p = np.array([[0,0,6],
+#     [0,0,4],
+#     [0,0,5]])
+#b = np.array([[0,2,4],
+#     [0,2,3],
+#     [0,2,4]])
 
-n = len(p)
+#n = len(p)
 
 __DEBUG = False
 __DEBUG_2 = False
@@ -249,8 +249,6 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
             w_max = 1
         for w in range(w_min, w_max):   # after exluding item [i] loop on weight values between W-u[i] to W as new capacity
             merged_val = B[w] + p_eval(b[i,:],p[i,:],W-w)
-            #if i==6 and W == 279:
-            #    print("i=", i, " merged_val=", merged_val, " B[w]=", B[w] ," peval=", p_eval(b[i,:], p[i,:], W - w), " b[i,:]=",b[i,:], " p[i,:]=", p[i,:], " w=", w, " W-W=", W-w)
 
             if merged_val > max_val:
                 max_val = merged_val
@@ -277,10 +275,10 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
 # print(np.searchsorted(b[1],2.5))
 
 def read_instance(i):
-    test_data = pd.read_csv("../data/Original_Instances/InverseStrong00"+ str(i) ,skiprows=3, sep="\s+")
+    test_data = pd.read_csv("../data/Original_Instances/InverseStrong00"+ str(i) ,skiprows=3, sep="\\s+")
     return test_data.iloc[:,0], test_data.iloc[:,1]
 
-def write_instance(p_random,b_random,i)
+def write_instance(p_random,b_random,i):
     df = pd.DataFrame(data=np.column_stack((b_random,p_random)))
     fileName = "data" + str(length(b_random)) + "_" + str(length(p_random)) + "_" + str(i) + ".txt"
     #f = open(fileName,"w")
