@@ -5,7 +5,7 @@ from sos2 import sos2, convex_pw_knapsack_dp
 import numpy as np
 import pandas as pd
 import pyomo.environ as pe
-from pyomo.opt import SolverStatus, TerminationCondition
+from pyomo.opt import SolverStatus, TerminationCondition, SolutionStatus
 import math
 import time
 
@@ -16,14 +16,15 @@ sample small test case
 """
 __DEBUG = False
 __DEBUG_2 = False
-a_hat = [2,2,2,2]
-a_bar = [2,2,3,1]
-Omega = 3 # also B
-V = 8
+
+#a_hat = [2,2,2,2]
+#a_bar = [2,2,3,1]
+#Omega = 3 # also B
+#V = 8
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
 GAPVAL1 = 0.4
-GAPVAL2 = 0.01
+GAPVAL2 = 0.05
 TIME_LIMIT = 3600
 
 MAX_SCENRIOS = 1e4
@@ -232,7 +233,7 @@ def print_sol(model):
     print("\nmodel obj val: ",model.getObjVal())
 
 
-def solve_instance(a_bar, a_hat, V, c):
+def solve_instance(a_bar, a_hat, V, c, Omega):
     n = len(a_bar)
     m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     print("Read file with ", n, " items", " m=", m)
@@ -253,10 +254,8 @@ def solve_instance(a_bar, a_hat, V, c):
     timeL = False
     p_star_old = math.inf
     a_old = []
-    # p_old = []
-    # b_old = []
     z_old = []
-
+    soln = []
     while True:
         f = {}
         u = {}
@@ -264,11 +263,14 @@ def solve_instance(a_bar, a_hat, V, c):
         masterStart = time.time()
         results = opt.solve(model, tee=False)
         masterTime += time.time() - masterStart
+        soln = results.Solution
         status = results.Solver.status  # results.Solver()['Termination condition'].value
         if status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
             print('error occurred, status: {status}.  Check model!')
         if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
+            print('time limit!')
             timeL = True
+            return [], timeL
             break
 
         b = np.zeros((m, 3), int)
@@ -302,7 +304,7 @@ def solve_instance(a_bar, a_hat, V, c):
         p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True)  # False)
         p_star_0 = p_star
 
-        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + VIOL_TOL):
+        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + 100*VIOL_TOL):
             print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
             print(a)
             print(a_old)
@@ -343,7 +345,12 @@ def solve_instance(a_bar, a_hat, V, c):
         model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)
         scenario_num += 1
     runTime = time.time() - start
-    print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime)
+    print(" elapsed time: ", runTime)
+    assign = []
+    for k in model.z.keys():
+        if abs(model.z[k].value) > 1e-2:
+            assign.append(model.z[k].getname())
+    return assign, timeL, runTime, masterTime, numBins, scenario_num
 
 if __name__ == "__main__":
     # example problem
@@ -366,10 +373,11 @@ if __name__ == "__main__":
     a_hat = np.asarray(a_hat, dtype = 'int')
     m = int(math.ceil(2 * (sum(a_bar) + Omega) / V))
 
-    solve_instance(a_bar, a_hat, V, c)
-    error("quit")
+    assign = solve_instance(a_bar, a_hat, V, c)
+    #error("quit")
+    print(assign)
 
-    m = len(c)
+"""    m = len(c)
     n = len(a_bar)
     alpha = {}
     scenario_num = 0
@@ -468,8 +476,4 @@ if __name__ == "__main__":
         scenario_num += 1
         # model.writeLP("after_update_model.lp")
         # def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar,z):
-
-    for k in model.z.keys():
-        if abs(model.z[k].value) > 1e-2:
-            print(model.z[k].getname(), model.z[k].value, end=' ')
-    print('')
+"""

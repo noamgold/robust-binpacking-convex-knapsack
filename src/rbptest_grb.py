@@ -1,7 +1,7 @@
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 #from knapsack import rebppinit, update_rebpp
 from sos2 import sos2, convex_pw_knapsack_dp
-from rebpp import rebppinit_pyomo, update_rebpp_pyomo, convex_pw_knapsack_wrapper, print_sol
+from rebpp import rebppinit_pyomo, update_rebpp_pyomo, convex_pw_knapsack_wrapper, print_sol, solve_instance
 import numpy as np
 import pandas as pd
 import math
@@ -17,7 +17,7 @@ __DEBUG = False
 VIOL_TOL = 1e-3
 INT_TOL = 1e-3
 TIME_LIMIT = 3600
-devProp = 0.2
+devProp = 0.4
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
 rob_level_mult = 0.1 #0 #0.05
@@ -50,14 +50,14 @@ for sz in [30,60,90]:
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))
         V = int(V_mult*(sum(a_hat)+sum(a_bar)))
-        c_mult = 2 / V  # 0.05
+        c_mult = 2/V #3/(2*V) #2 / V  # 0.05
 
         n = len(a_bar)
         m = int(math.ceil(2*(sum(a_bar)+Omega)/V))
         c = np.ones(m)*c_mult
         print("Read file with ", n, " items", " m=", m)
-
-        alpha = {}
+        tmp, timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)
+        '''alpha = {}
         scenario_num = 0
         opt = pe.SolverFactory('gurobi_direct')
         opt.options['TimeLimit'] = TIME_LIMIT
@@ -163,7 +163,8 @@ for sz in [30,60,90]:
             model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)
             scenario_num += 1
         runTime = time.time()-start
-        print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime)
+        print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime) '''
+
         if timeL == False and runTime < TIME_LIMIT-NZ_TOl:
             runTimesWoTL.append(runTime)
             masterTimesWoTL.append(masterTime)
@@ -172,10 +173,8 @@ for sz in [30,60,90]:
         masterTimes.append(masterTime)
         runBins.append(numBins)
 
-    print(" & ", stat.mean(runTimes), " & ", max(runTimes), " & ", stat.mean(masterTimes), " & ", max(masterTimes),
-          " & ", stat.mean(runIter), " & ", max(runIter), " & ", stat.mean(runBins), " & ", max(runBins))
-    print(" & ", stat.mean(runTimesWoTL), " & ", max(runTimesWoTL), " & ", stat.mean(masterTimesWoTL), " & ",
-          max(masterTimesWoTL), " & ", num_tests - len(runTimesWoTL))
+    print(" & {t1:.1f} & {t2:.1f} & {t3:.1f} & {t4:.1f} & {t5:.1f} & {t6:} & {t7:.1f} & {t8:} & {t9:} ".format(t1=stat.mean(runTimes),t2=max(runTimes),t3=stat.mean(masterTimes), t4=max(masterTimes), t5=stat.mean(runIter), t6=max(runIter),t7=stat.mean(runBins), t8=max(runBins), t9=num_tests - len(runTimesWoTL)))
+    print(" & ", stat.mean(runTimesWoTL), " & ", max(runTimesWoTL), " & ", stat.mean(masterTimesWoTL), " & ", max(masterTimesWoTL))
 
 
 #print(" & ", stat.mean(runTimes), " & ", max(runTimes), " & ", stat.mean(runIter), " & ", max(runIter), " & ", stat.mean(runBins), " & ", max(runBins))
