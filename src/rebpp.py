@@ -10,7 +10,7 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
 #gapVal = 0.1
 """
@@ -383,7 +383,7 @@ if __name__ == "__main__":
     print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " num of scenarios: ", scenario_num)
     #error("quit")
     print(assign)
-    assign.to_csv("schedule.csv")
+    assign.to_csv(FILENAME + "_schedule.csv")
 
 """    m = len(c)
     n = len(a_bar)
