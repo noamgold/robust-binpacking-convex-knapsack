@@ -16,8 +16,11 @@ __DEBUG = False
 #if __name__ == "__main__":
 VIOL_TOL = 1e-3
 INT_TOL = 1e-3
-TIME_LIMIT = 3600
+TIME_LIMIT = 7200
+#3600
 devProp = 0.4
+c_const = 1.5
+
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
 rob_level_mult = 0.1 #0 #0.05
@@ -30,11 +33,11 @@ V_mult = 1/8
 
 
 def read_instance(i,sz):
-    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
+    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt",skiprows=[1])
     return test_data.iloc[:,0]
 
 #test_data = pd.read_csv("../data/ma30.csv")
-for sz in [30,60,90]:
+for sz in [60,90]:
     runTimes = []
     masterTimes = []
     runIter = []
@@ -50,7 +53,7 @@ for sz in [30,60,90]:
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))
         V = int(V_mult*(sum(a_hat)+sum(a_bar)))
-        c_mult = 2/V #3/(2*V) #2 / V  # 0.05
+        c_mult = c_const / V  # 3/(2*V) #2 / V  # 0.05
 
         n = len(a_bar)
         m = int(math.ceil(2*(sum(a_bar)+Omega)/V))

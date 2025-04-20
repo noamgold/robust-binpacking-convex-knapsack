@@ -26,8 +26,10 @@ __DEBUG_2 = False
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
 GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.1  # final optimality gap
-TIME_LIMIT = 10800
+GAPVAL2 = 0.05  # final optimality gap
+TIME_LIMIT = 7200
+#3600
+OT_cost = 0.007
 
 MAX_SCENRIOS = 1e4
 
@@ -239,7 +241,7 @@ def print_sol(model):
     print("\nmodel obj val: ",model.getObjVal())
 
 
-def solve_instance(a_bar, a_hat, V, c, Omega):
+def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     n = len(a_bar)
     m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     print("Read file with ", n, " items", " m=", m)
@@ -247,7 +249,6 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
     alpha = {}
     scenario_num = 0
     opt = pe.SolverFactory('gurobi_direct')
-    opt.options['TimeLimit'] = TIME_LIMIT
     gapVal = GAPVAL1
     start = time.time()
     # model, theta, y, f_bar, z = rebppinit_pyomo(a_bar, a_hat, V, c)
@@ -256,7 +257,6 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
     it = 0
     numBins = 0
     masterTime = 0
-    rTime = 0
     timeL = False
     p_star_old = math.inf
     a_old = []
@@ -266,6 +266,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
         f = {}
         u = {}
         opt.options["MIPGap"] = gapVal
+        opt.options['TimeLimit'] = int(float(timelimit)-(time.time()-start))
         masterStart = time.time()
         results = opt.solve(model, tee=False)
         masterTime += time.time() - masterStart
@@ -274,7 +275,6 @@ def solve_instance(a_bar, a_hat, V, c, Omega):
         if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
             print('time limit!')
             timeL = True
-            return [], timeL
             break
         elif status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
             error('error occurred, status: {}.  Check model!'.format(status))
@@ -377,7 +377,7 @@ if __name__ == "__main__":
     a_bar = np.asarray(a_bar, dtype = 'int')
     a_hat = np.asarray(a_hat, dtype = 'int')
     m = int(math.ceil(2 * (sum(a_bar) + Omega) / V))
-    c = [0.005]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
+    c = [OT_cost]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
 
     assign,timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)
     print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " num of scenarios: ", scenario_num)
