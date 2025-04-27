@@ -15,7 +15,7 @@ __DEBUG = False
 
 VIOL_TOL = 1e-3
 INT_TOL = 1e-3
-TIMELIMIT = 3600.0
+TIMELIMIT = 7200.0
 devProp = 0.2
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)

@@ -13,7 +13,6 @@ from gurobipy import GRB
 import pyomo.environ as pe
 import pandas as pd
 
-
 from knapsack import for_loop_method_all_w, generate_random_instance, for_loop_method_all_w_save_all
 
 
@@ -29,6 +28,7 @@ from knapsack import for_loop_method_all_w, generate_random_instance, for_loop_m
 
 __DEBUG = False
 __DEBUG_2 = False
+__DEBUG_3 = False
 
 NZ_TOL = 1e-10
 TIMELIMIT = 1800
@@ -92,7 +92,6 @@ def sos2_gurobi(p,b,B):
     md.I = pe.RangeSet(0,n-1)
     md.J = pe.RangeSet(0,m-1)
 
-    md.x = pe.Var(md.I,md.J,domain=pe.NonNegativeReals)
     md.t = pe.Var(md.I,md.J,domain=pe.NonNegativeReals)
     md.obj = pe.Objective(expr = sum(p[i,j]*md.t[i,j] for i in md.I for j in md.J),sense=pe.maximize)
     #def c_rule(md):
@@ -119,13 +118,14 @@ def sos2_gurobi(p,b,B):
     i_max = None
     if 'ok' == str(results.Solver.status):
         for i in md.I:
-            for j in md.J:
-                if p[i, m - 1] > 0 and md.t[i, j]() > NZ_TOL:
-                    if j < m - 1:
-                        i_max = i
-                        break
-                    elif j == m - 1:
-                        fin.append(i)
+            if p[i, m - 1] > 0:
+                for j in md.J:
+                    if md.t[i, j]() > NZ_TOL:
+                        if md.t[i, j]() < 1-NZ_TOL:
+                            i_max = i
+                            break
+                        else: # j == m - 1:
+                            fin.append(i)
     else:
         print("No Valid Solution Found")
         objVal = -INFINITY
@@ -204,14 +204,18 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
     if __DEBUG_2:
         print("convex_pw_knapsack_dp...")
     n,m = p.shape # n = rows // m = columns
-    #if __DEBUG_2:
-    # for i in range(n):
-    # assert all(p[i,j+1] <= p[i,j+1] for j in range(len(p[i,:]) - 1))
-    # assert all(b[i,j] <= b[i,j+1] for j in range(len(b[i,:]) - 1))
+#    if __DEBUG_3:
+#        for i in range(n):
+#            if not all(p[i,j] <= p[i,j+1] for j in range(m-1)):
+#                print(p,b)
+#                raise OSError("nonconvex p")
+#            if not all(b[i,j] <= b[i,j+1] for j in range(m-1)):
+#                print(p,b)
+#                raise OSError("nonconvex b")
     nb,mb = b.shape
     w_max = 0
     i_max = None
-    items_max = [[i for i in range(0)] for _ in range(W+1)]#[[]]
+    #items_max = [[i for i in range(0)] for _ in range(W+1)]#[[]]
     assert m == mb and n == nb # make sure that they have the same dimensions
     initialP = 0
     if y_intercept_nonzero:
@@ -240,12 +244,12 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
             B = B_all[n-1,:].copy()
         else:
             #skip_idx=-1
-            B, _ = for_loop_method_all_w(profit_array, b_array, W, B_all[max(skip_idx-1,-1),:], skip_idx, False) #items_all[i-1], skip_idx)
+            B, _ = for_loop_method_all_w(profit_array, b_array, W, B_all[max(skip_idx-1,-1),:], skip_idx, False,True) #items_all[i-1], skip_idx)
         profit_array[i] = pi  # allow i to be selected again
-        w_max = W
+        w_max = W #max(W - b_array[i],1) #W
         w_min = max(W - b_array[i],1)
         if min(np.delete(b_array,i)) > W:
-            w_min = 0
+            #w_min = 0
             w_max = 1
         for w in range(w_min, w_max):   # after exluding item [i] loop on weight values between W-u[i] to W as new capacity
             merged_val = B[w] + p_eval(b[i,:],p[i,:],W-w)
@@ -257,14 +261,17 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
                 i_max = i
     if __DEBUG_2:
         print("convex_pw_knapsack_dp i_max=", i_max)
+    p_vec = profit_array.copy()
     if i_max is not None:
-        profit_array[int(i_max)] = 0
-    B, items_max = for_loop_method_all_w(profit_array, b_array, W, B, -1, True)  # items_all[i-1], skip_idx)
+        p_vec[int(i_max)] = 0
+    _, items_max = for_loop_method_all_w(p_vec, b_array, W) #, B, -1, True)  # items_all[i-1], skip_idx)
+    #B, items_max = for_loop_method_all_w(profit_array, b_array, W, B_all[max(i_max-1,-1),:], i_max, True)  # items_all[i-1], skip_idx)
     #print("i_max: ",i_max)
     #print(max_val)
     #print(items_max)
     if __DEBUG_2:
-        print("convex_pw_knapsack_dp objVal=", initialP+max_val)
+        print(items_max[w_max])
+        print("convex_pw_knapsack_dp objVal=", initialP+max_val, " i_max=", i_max, " w_max=", w_max)
     return initialP+max_val, items_max[w_max], i_max
 
 #print(convex_pw_knapsack_dp(p,b,B))
@@ -280,7 +287,7 @@ def read_instance(i):
 
 def write_instance(p_random,b_random,i):
     df = pd.DataFrame(data=np.column_stack((b_random,p_random)))
-    fileName = "data" + str(length(b_random)) + "_" + str(length(p_random)) + "_" + str(i) + ".txt"
+    fileName = "data" + str(len(b_random)) + "_" + str(len(p_random)) + "_" + str(i) + ".txt"
     #f = open(fileName,"w")
     #f.write("\n\n", length(p_random), "\n")
     df.to_csv(fileName)
@@ -288,7 +295,7 @@ def write_instance(p_random,b_random,i):
 if __name__ == "__main__":
     random.seed(101)
     for R in [100]: #[1000,10000]:
-        for k_random in [10, 50, 250]: #[50, 100, 150, 200, 250, 300]:
+        for k_random in [50]: #, 250]: #[50, 100, 150, 200, 250, 300]:
             sos2_time_process = []
             sos2_time_elapsed = []
             sos2g_time_process = []
@@ -305,12 +312,12 @@ if __name__ == "__main__":
                 b = np.empty((0,3), int)
                 p = np.empty((0,3),float)
                 p_random,b_random = generate_random_instance(k_random,R,True)
-                write_instance(p_random,b_random)
+                write_instance(p_random,b_random,i)
                 #b_random, p_random  = read_instance(i)
                 k_random = len(b_random)
 
                 for p_val in p_random:
-                    p = np.append(p, np.array([[0, 0, p_val]]), axis=0)
+                    p = np.append(p, np.array([[0, 0, p_val+1e-3*random.random()]]), axis=0)
 
                 for b_val in b_random:
                     #b = np.append(b, np.array([[0, random.randint(0,b_val), b_val]]), axis = 0)
@@ -319,17 +326,20 @@ if __name__ == "__main__":
                         #print(for_loop_method_all_w(p, b, 63,-1,[i for i in range(1)], [[i for i in range(1)] for _ in range(1)], -1))
                 W = int(math.ceil((5+i*3)/101 * sum(b_random)))
 
-                (sos2_val, sos_items, sos_imax, solve_time, cpu_time) = 0, 0, 0 , 0, 0
+                p, b = sort_instance_by_slopes(p, b)  # sort instance for linear speed up
+
+    #(sos2_val, sos_items, sos_imax, solve_time, cpu_time) = 0, 0, 0 , 0, 0
                         #(sos2_val,sos_items,sos_imax, solve_time, cpu_time) = sos2(p,b,W)
-                if __DEBUG_2:
-                    print("sos2 objVal=", sos2_val)
-                sos2_time_process.append(cpu_time)
-                sos2_time_elapsed.append(solve_time)
+                #if __DEBUG_2:
+                #    print("sos2 objVal=", sos2_val)
+                #sos2_time_process.append(cpu_time)
+                #sos2_time_elapsed.append(solve_time)
 
         ##################################
                 (sos2g_val,sosg_items,sosg_imax, solve_time, cpu_time) = sos2_gurobi(p,b,W)
                 if __DEBUG_2:
-                    print("sos2 gurobi objVal=", sos2g_val)
+                    print("sos2 gurobi objVal=", sos2g_val, " sosg_imax=", sosg_imax)
+                    print(sosg_items)
                 sos2g_time_process.append(cpu_time)
                 sos2g_time_elapsed.append(solve_time)
                 sos2_val = sos2g_val
@@ -337,16 +347,15 @@ if __name__ == "__main__":
 
                 convex_start_process = time.process_time()
                 convex_start_elapsed = time.time()
-                p,b=sort_instance_by_slopes(p,b)  # sort instance for linear speed up
                 convex_val,items,imax = convex_pw_knapsack_dp(p,b,W)
                 convex_end_process = time.process_time()
                 convex_end_elapsed = time.time()
                 convex_time_process.append(convex_end_process - convex_start_process)
                 convex_time_elapsed.append(convex_end_elapsed - convex_start_elapsed)
 
-                if abs(sos2_val-convex_val)/sos2_val > 1e-4 and int(sos2_time_elapsed[-1]) < 3599:
-                    print("sos2 objval: ", sos2_val, " DP val: ", convex_val)
-                    print("W=", W, " sos_imax=", sos_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sos_items)
+                if abs(sos2g_val-convex_val)/sos2g_val > 1e-4 and int(sos2_time_elapsed[-1]) < 3599:
+                    print("ERR ! ................  sos2g objval: ", sos2g_val, " DP val: ", convex_val)
+                    #print("W=", W, " sosg_imax=", sosg_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sos_items)
                     raise Exception("different obj vals")
 
 

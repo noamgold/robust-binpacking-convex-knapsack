@@ -1,6 +1,9 @@
 from fontTools.misc.cython import returns
+from numpy.f2py.auxfuncs import throw_error
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
-from sos2 import sos2, convex_pw_knapsack_dp
+
+#from rbptest import alpha
+from sos2 import sos2, convex_pw_knapsack_dp, sos2_gurobi
 import numpy as np
 import pandas as pd
 import pyomo.environ as pe
@@ -10,7 +13,10 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+    #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_04W_071Patients.csv"
+    #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
 #gapVal = 0.1
 """
@@ -27,9 +33,9 @@ VIOL_TOL = 1e-6
 INT_TOL = 1e-3
 GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
 GAPVAL2 = 0.05  # final optimality gap
-TIME_LIMIT = 7200
+TIME_LIMIT = 14400
 #3600
-OT_cost = 0.007
+OT_cost = 0.0035
 
 MAX_SCENRIOS = 1e4
 
@@ -105,6 +111,10 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     def indRule(mdl,i,j):
         return (mdl.z[i,j] <= mdl.y[j])
     mdl.indCons = pe.Constraint(mdl.I,mdl.J,rule=indRule)
+
+    #def indRuleB(mdl,j):
+    #    return (mdl.alpha_bar[j] <= 2*V*mdl.y[j])    #### experiment with bound on overfilling - can add this for each scenario as well
+    #mdl.indConsB = pe.Constraint(mdl.J,rule=indRuleB)
 
     #def symbreak(mdl, j):
     #    return (mdl.y[j] >= mdl.y[j+1])
@@ -198,21 +208,39 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
     n = len(a_hat)
     m = len(p)
     a = [0] * n
-    #t_val1 = [0] * m
-    #t_val2 = [0] * m
     p_star = None
     items = []
     i_max = None
     # if we use the scip version
+
+    m,nn = p.shape # n = rows // m = columns
+    p_star = []
+    p_star_k = []
+    pp = np.array(p)
+    bb = np.array(b)
+    constant = 0
+    itemsConstant = set([])
+    for i in range(m):
+        if not all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
+            print(p, b)
+            raise OSError("nonconvex p")
+        if not all(b[i, j] <= b[i, j + 1] for j in range(nn - 1)):
+            print(p, b)
+            raise OSError("nonconvex b")
+        if p[i, 0] > 1e-4:  #and not sos:
+            pp[i, 0] = 0
+            pp[i, 1] = 0
+            pp[i,2] -= p[i,0]
+            constant += p[i,0]
+            itemsConstant.add(i)
     if sos:
         if __DEBUG_2:
-            p_star, items, i_max = convex_pw_knapsack_dp(p, b, Omega, True)  # true
-            print("p_star knapsack = ", p_star, " items=", items, " i_max=", i_max)
-        p_star, items, i_max, _, _ = sos2(p, b, Omega)
-        if __DEBUG_2:
-            print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
+            p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, True)  # true
+            print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
+        p_star, items, i_max, _, _ = sos2_gurobi(p, b, Omega)
     else:
-        p_star, items, i_max = convex_pw_knapsack_dp(p,b,Omega,True) # true since y intercept is nonzero
+        p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
+    items = itemsConstant.union(items)
     fullDevSum = 0
     for item in items:
         for i in range(n):
@@ -226,9 +254,24 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
                 a[i] = min(a_hat[i],remDev)
                 remDev -= a[i]
     if p_star > 0 and remDev > 0:
-        print ("items=",items, " i_max=", i_max, " remDev=", remDev, " p=", p, " b=", b, " Omega=", Omega, " p_star=", p_star)
-        raise ValueError("remDev>0")
-    return p_star, a
+        if __DEBUG_2:
+            p_star_2 = []
+            items_2 = []
+            i_max_2 = []
+            if not sos:
+                p_star_2, items_2, i_max_2, _, _ = sos2_gurobi(p, b, Omega)
+            else:
+                p_star_2 = p_star_k
+                items_2 = items_k
+                i_max_2 = i_max_k
+            print ("items=",items, " i_max=", i_max, " remDev=", remDev, " sumU=", sum(b[i,2] for i in range(m)), " sum b[:,1]=", sum(b[i,1] for i in range(m)),
+                   " Omega=", Omega, " p_star=", p_star, " p_star_2=", p_star_2, " constant=", constant, " items_2", items_2, " i_max_2=", i_max_2)
+            if (not sos and abs(p_star_2 - (p_star+constant)) > 1e-3) or (sos and abs(p_star_2+constant - p_star) > 1e-3):
+                #print("p_star sos = ", p_star, " items=", items, " i_max=", i_max, " p_star_2=", p_star_2, " i_max_2=", i_max_2, " items_2=", items_2, " constant=", constant)
+                print(p, b)
+                raise ValueError("error in conv knapsack")
+            #raise ValueError("remDev>0")
+    return p_star+constant, a
 
 def print_sol(model):
     """
@@ -296,9 +339,14 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
                 b[j, 1] = max(min(V - f[j], u[j]), 0)
                 b[j, 2] = u[j]  # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
                 p[j, 0] = c[j] * max(f[j] - V, 0)
-                p[j, 1] = p[j, 0]
+                p[j, 1] = c[j] * max(f[j] - V, 0)
                 # p[j,2] = c[j] * max(u[j] - V + f[j], 0)
                 p[j, 2] = c[j] * (b[j, 2] - b[j, 1] + max(f[j] - V, 0))
+                if abs(p[j,2])<=1e-3:  # if b[j,1]=u[j] < f[j] - V
+                    b[j,1] = 0
+                    b[j,2] = 0
+                assert p[j,2] >= p[j,1]
+                assert p[j,1] >= p[j,0]
             # p = np.append(p, np.array([[c[j] * max(f[j] - V, 0), c[j] * max(f[j] - V, 0), c[j] * max(u[j] - V + f[j], 0)]]), axis=0)
         # print(b)
         # print(p)
@@ -307,18 +355,15 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         p_star = 0
         # if np.sum(p[:,2]) > NZ_TOl:
         # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True)  # False)
+        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, False)  # False)
         p_star_0 = p_star
 
         if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + 100*VIOL_TOL):
             print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
             print(a)
             print(a_old)
-            # print(a_0)
             print(p)
             print(b)
-            # print(p_old)
-            # print(b_old)
             print(Omega)
             for k in model.z.keys():
                 if abs(model.z[k].value) > 1e-2:
@@ -364,7 +409,7 @@ if __name__ == "__main__":
     pe.ConcreteModel.getVal = classmethod(getVal)
 
     a_hat = []
-    Omega = 3000 #3000 #240 # also B
+    Omega = 2523 #3000 #240 # also B
     V = 480
     BEGIN = 0
     rambam_data = pd.read_csv(FILENAME)

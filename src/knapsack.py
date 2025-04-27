@@ -266,7 +266,7 @@ def for_loop_method_all_w_save_all(p,w,W,B_all):
 # vector implementation of DP - cost version
 # save B and items after item i in addition to final ones, start from i_skip + 1 and save at
 @jit(nopython=True)
-def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_items = True, sorted_two_piece = True):
+def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_items = True, sorted_two_piece = False):
 #def for_loop_method_all_w(p, w, W, B_in=np.array([],dtype=float), items_in=[List().append(-1) for _ in range(W+1)], i_skip=int(-1)):
     n = len(p)
     nn = len(w)
@@ -291,11 +291,12 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
             if p[k] == 0:
                 continue
             A = B.copy()
+            items_tmp = items.copy()
             for weight in range(w[k], W + 1):
                 if A[weight - w[k]] + p[k] > A[weight]:
                     B[weight] = A[weight - w[k]] + p[k]
                     if return_items:
-                        items[weight] = [*items[weight-w[k]], k] # items[weight-w[k]] + [k]#[*items[weight-w[k]], k]
+                        items[weight] = items_tmp[weight-w[k]] + [k] #[*items[weight-w[k]], k]  # items[weight-w[k]] + [k]#[*items[weight-w[k]], k]
             #if save_all:
             #    B_all[:,i] = B.copy()
             #    items_all[i] = items.copy()
@@ -379,8 +380,8 @@ if __name__ == "__main__":
 
     for i in range(10): # number of trials to average out on
         print(i) # to see what iteration it's on
-        R = 1000
-        k_random = 1 #500 # number of items
+        R = 100
+        k_random = 50 #500 # number of items
         n = k_random
         w_random = []
         

@@ -19,7 +19,7 @@ INT_TOL = 1e-3
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
-c_const = 1.5
+c_const = 2 #1.5
 
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
@@ -33,11 +33,11 @@ V_mult = 1/8
 
 
 def read_instance(i,sz):
-    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt",skiprows=[1])
+    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
     return test_data.iloc[:,0]
 
 #test_data = pd.read_csv("../data/ma30.csv")
-for sz in [60,90]:
+for sz in [30, 60,90]:
     runTimes = []
     masterTimes = []
     runIter = []
