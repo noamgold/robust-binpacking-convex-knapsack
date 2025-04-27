@@ -35,7 +35,8 @@ GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
 GAPVAL2 = 0.05  # final optimality gap
 TIME_LIMIT = 14400
 #3600
-OT_cost = 0.0035
+OT_cost = 0.003
+Omega = 1833 #2523  # 3000 #240 # also B
 
 MAX_SCENRIOS = 1e4
 
@@ -409,7 +410,6 @@ if __name__ == "__main__":
     pe.ConcreteModel.getVal = classmethod(getVal)
 
     a_hat = []
-    Omega = 2523 #3000 #240 # also B
     V = 480
     BEGIN = 0
     rambam_data = pd.read_csv(FILENAME)
