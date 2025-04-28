@@ -13,8 +13,7 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_04W_071Patients.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_02W_032Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
@@ -33,12 +32,13 @@ __DEBUG_3 = True
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
 GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.05  # final optimality gap
+GAPVAL2 = 0.0001  # final optimality gap
 TIME_LIMIT = 14400
 #3600
 OT_cost = 0.003
 Omega = 1833 #2523  # 3000 #240 # also B
 
+MAX_BINS = 10
 MAX_SCENRIOS = 1e4
 
 import os  # change current path to the file's directory
@@ -365,7 +365,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         p_star = 0
         # if np.sum(p[:,2]) > NZ_TOl:
         # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, False)  # False)
+        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, False)  # False)  # if last argument is false then DP is invoked otherwise SoS
         p_star_0 = p_star
 
         if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + 100*VIOL_TOL):
@@ -430,7 +430,7 @@ if __name__ == "__main__":
     a_hat = np.round(a_hat[BEGIN:END].to_numpy())
     a_bar = np.asarray(a_bar, dtype = 'int')
     a_hat = np.asarray(a_hat, dtype = 'int')
-    m = int(math.ceil(2 * (sum(a_bar) + Omega) / V))
+    m = MAX_BINS #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     c = [OT_cost]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
 
     assign,timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)

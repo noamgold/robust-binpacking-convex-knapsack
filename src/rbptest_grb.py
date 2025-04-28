@@ -19,7 +19,7 @@ INT_TOL = 1e-3
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
-c_const = 2 #1.5
+c_const = 1.5 #2 #1.5
 
 num_tests = 10
 # Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
@@ -59,7 +59,7 @@ for sz in [30, 60,90]:
         m = int(math.ceil(2*(sum(a_bar)+Omega)/V))
         c = np.ones(m)*c_mult
         print("Read file with ", n, " items", " m=", m)
-        tmp, timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)
+        tmp, timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega,TIME_LIMIT)
         '''alpha = {}
         scenario_num = 0
         opt = pe.SolverFactory('gurobi_direct')
