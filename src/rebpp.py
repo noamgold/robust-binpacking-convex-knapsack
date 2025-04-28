@@ -24,6 +24,7 @@ sample small test case
 """
 __DEBUG = False
 __DEBUG_2 = False
+__DEBUG_3 = True
 
 #a_hat = [2,2,2,2]
 #a_bar = [2,2,3,1]
@@ -92,6 +93,8 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     mdl.I = range(n)
     mdl.J = range(m)
     mdl.theta = pe.Var(domain=pe.NonNegativeReals)
+    #mdl.fover = pe.Var(mdl.J,domain=pe.NonNegativeReals)
+
     mdl.y = pe.Var(mdl.J,domain=pe.Binary)
     mdl.z = pe.Var(mdl.I,mdl.J,domain=pe.Binary)
 
@@ -113,6 +116,10 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
         return (mdl.z[i,j] <= mdl.y[j])
     mdl.indCons = pe.Constraint(mdl.I,mdl.J,rule=indRule)
 
+    #def overFlowRule(mdl, j):
+    #    return (mdl.fover[j]<=mdl.alpha_bar[j])
+    #mdl.overCons = pe.Constraint(mdl.J,rule = overFlowRule)   ## added new 28.4.25 fover variable to make cuts continuous
+
     #def indRuleB(mdl,j):
     #    return (mdl.alpha_bar[j] <= 2*V*mdl.y[j])    #### experiment with bound on overfilling - can add this for each scenario as well
     #mdl.indConsB = pe.Constraint(mdl.J,rule=indRuleB)
@@ -120,7 +127,6 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     #def symbreak(mdl, j):
     #    return (mdl.y[j] >= mdl.y[j+1])
     #mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
-
     mdl.objCons = pe.Constraint(expr = sum(c[j]*mdl.alpha_bar[j] for j in mdl.J)<= mdl.theta)
 
     mdl.obj = pe.Objective(expr = sum(mdl.y[j] for j in mdl.J) + mdl.theta, sense=pe.minimize)
@@ -176,9 +182,8 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num):
     #mdl.scenarios = mdl.scenarios | pe.Set(initialize=[scenario_num])
     mdl.sn = scenario_num
     for j in mdl.J:
-        #mdl.alpha_bar[j, scenario_num] #= mdl.add_column(mdl,0,[],[])
         mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
-
+        #mdl.scuts.add(mdl.fover[j] <= mdl.alpha[j, scenario_num])
     mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
 
     return mdl, mdl.alpha
@@ -233,15 +238,16 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
             pp[i, 1] = 0
             pp[i,2] -= p[i,0]
             constant += p[i,0]
-            itemsConstant.add(i)
+            #itemsConstant.add(i)  not needed
     if sos:
-        if __DEBUG_2:
+        if __DEBUG_3:
             p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, True)  # true
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
         p_star, items, i_max, _, _ = sos2_gurobi(p, b, Omega)
     else:
         p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
-    items = itemsConstant.union(items)
+    #itemsConstant = itemsConstant.difference([i_max])
+    #items = itemsConstant.union(items)
     fullDevSum = 0
     for item in items:
         for i in range(n):
@@ -249,13 +255,16 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
                 a[i] = a_hat[i]
                 fullDevSum += a_hat[i]
     remDev = Omega - fullDevSum
+    if remDev < 0:
+        print ("Error", Omega, remDev, items, i_max)
+        raise ValueError
     if i_max is not None:
         for i in range(n):
             if model.getVal(z[i,i_max]) >= 1 - INT_TOL:
                 a[i] = min(a_hat[i],remDev)
                 remDev -= a[i]
     if p_star > 0 and remDev > 0:
-        if __DEBUG_2:
+        if __DEBUG_2 or __DEBUG_3:
             p_star_2 = []
             items_2 = []
             i_max_2 = []

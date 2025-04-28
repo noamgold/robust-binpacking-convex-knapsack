@@ -124,7 +124,7 @@ def sos2_gurobi(p,b,B):
                         if md.t[i, j]() < 1-NZ_TOL:
                             i_max = i
                             break
-                        else: # j == m - 1:
+                        elif j>0: # j == m - 1:
                             fin.append(i)
     else:
         print("No Valid Solution Found")
@@ -271,7 +271,7 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
     #print(items_max)
     if __DEBUG_2:
         print(items_max[w_max])
-        print("convex_pw_knapsack_dp objVal=", initialP+max_val, " i_max=", i_max, " w_max=", w_max)
+        print("convex_pw_knapsack_dp objVal=", initialP+max_val, " i_max=", i_max, " w_max=", w_max, " items_max[w_max]=", items_max[w_max])
     return initialP+max_val, items_max[w_max], i_max
 
 #print(convex_pw_knapsack_dp(p,b,B))
