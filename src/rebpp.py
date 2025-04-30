@@ -31,8 +31,8 @@ __DEBUG_3 = True
 #V = 8
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
-GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.0001  # final optimality gap
+GAPVAL1 = 0.2  # optimality gap to finish 1st phase of algorithm
+GAPVAL2 = 0.05  # final optimality gap
 TIME_LIMIT = 14400
 #3600
 OT_cost = 0.003

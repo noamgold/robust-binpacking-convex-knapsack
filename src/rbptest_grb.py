@@ -33,7 +33,7 @@ V_mult = 1/8
 
 
 def read_instance(i,sz):
-    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
+    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt",skiprows=[1])
     return test_data.iloc[:,0]
 
 #test_data = pd.read_csv("../data/ma30.csv")
