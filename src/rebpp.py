@@ -13,7 +13,7 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_02W_032Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_12W_212Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
@@ -31,14 +31,14 @@ __DEBUG_3 = True
 #V = 8
 VIOL_TOL = 1e-6
 INT_TOL = 1e-3
-GAPVAL1 = 0.2  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.05  # final optimality gap
+GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
+GAPVAL2 = 0.0001  # final optimality gap
 TIME_LIMIT = 14400
 #3600
 OT_cost = 0.003
-Omega = 1833 #2523  # 3000 #240 # also B
+Omega = 0 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
 
-MAX_BINS = 10
+MAX_BINS = 60
 MAX_SCENRIOS = 1e4
 
 import os  # change current path to the file's directory
@@ -220,12 +220,12 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
     # if we use the scip version
 
     m,nn = p.shape # n = rows // m = columns
-    p_star = []
+    p_star = 0
     p_star_k = []
     pp = np.array(p)
     bb = np.array(b)
     constant = 0
-    itemsConstant = set([])
+    #itemsConstant = set([])
     for i in range(m):
         if not all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
             print(p, b)
@@ -245,7 +245,8 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
         p_star, items, i_max, _, _ = sos2_gurobi(p, b, Omega)
     else:
-        p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
+        if Omega > 0:
+            p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
     #itemsConstant = itemsConstant.difference([i_max])
     #items = itemsConstant.union(items)
     fullDevSum = 0

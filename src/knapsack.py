@@ -270,7 +270,7 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
 #def for_loop_method_all_w(p, w, W, B_in=np.array([],dtype=float), items_in=[List().append(-1) for _ in range(W+1)], i_skip=int(-1)):
     n = len(p)
     nn = len(w)
-    assert W > 0
+    assert W >= 0
     if n != nn:
         raise Exception("n!=n")
     B = np.zeros(W+1) #[0] * (W + 1)
