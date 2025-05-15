@@ -1,6 +1,10 @@
+from copy import deepcopy
+
+from cylp.py.mip.GomoryCutGenerator import epsilon
 from fontTools.misc.cython import returns
 from numpy.f2py.auxfuncs import throw_error
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
+from sympy import false
 
 #from rbptest import alpha
 from sos2 import sos2, convex_pw_knapsack_dp, sos2_gurobi
@@ -13,7 +17,7 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_12W_212Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_020Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
@@ -30,16 +34,21 @@ __DEBUG_3 = True
 #Omega = 3 # also B
 #V = 8
 VIOL_TOL = 1e-6
-INT_TOL = 1e-3
+INT_TOL = 1e-2
 GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.0001  # final optimality gap
-TIME_LIMIT = 14400
+GAPVAL2 = 0.01 # final optimality gap
+TIME_LIMIT = 10800
 #3600
-OT_cost = 0.003
-Omega = 0 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
+Omega = 0 #1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
 
-MAX_BINS = 60
+MAX_BINS = 5
 MAX_SCENRIOS = 1e4
+
+SOS_SOLVE = False
+BINSIZE = 720
+OT_cost = 1.5/BINSIZE #0.0021 #0.003
+
+EPS = 10**-10
 
 import os  # change current path to the file's directory
 abspath = os.path.abspath(__file__)
@@ -128,9 +137,7 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     #    return (mdl.y[j] >= mdl.y[j+1])
     #mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
     mdl.objCons = pe.Constraint(expr = sum(c[j]*mdl.alpha_bar[j] for j in mdl.J)<= mdl.theta)
-
     mdl.obj = pe.Objective(expr = sum(mdl.y[j] for j in mdl.J) + mdl.theta, sense=pe.minimize)
-
     mdl.scuts = pe.ConstraintList()
 
     return mdl #, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
@@ -229,11 +236,11 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
     for i in range(m):
         if not all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
             print(p, b)
-            raise OSError("nonconvex p")
+            raise ValueError("nonconvex p")
         if not all(b[i, j] <= b[i, j + 1] for j in range(nn - 1)):
             print(p, b)
-            raise OSError("nonconvex b")
-        if p[i, 0] > 1e-4:  #and not sos:
+            raise ValueError("nonconvex b")
+        if p[i, 0] > INT_TOL:  #and not sos:
             pp[i, 0] = 0
             pp[i, 1] = 0
             pp[i,2] -= p[i,0]
@@ -241,9 +248,11 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
             #itemsConstant.add(i)  not needed
     if sos:
         if __DEBUG_3:
-            p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, True)  # true
+            p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, False)  # true
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
-        p_star, items, i_max, _, _ = sos2_gurobi(p, b, Omega)
+        p_star, items, i_max, _, _ = sos2_gurobi(pp, bb, Omega)
+        print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
+
     else:
         if Omega > 0:
             p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
@@ -315,7 +324,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     p_star_old = math.inf
     a_old = []
     z_old = []
-    soln = []
+    model_old = []
     while True:
         f = {}
         u = {}
@@ -366,7 +375,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         p_star = 0
         # if np.sum(p[:,2]) > NZ_TOl:
         # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, False)  # False)  # if last argument is false then DP is invoked otherwise SoS
+        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, SOS_SOLVE)  # False)  # if last argument is false then DP is invoked otherwise SoS
         p_star_0 = p_star
 
         if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + 100*VIOL_TOL):
@@ -381,10 +390,13 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
                     print(model.z[k].getname(), model.z[k].value, end=' ')
             print('')
             print(z_old)
+            model.scuts.pprint()
+            model_old.scuts.pprint()
             raise Exception("breaking..")
 
         p_star_old = p_star
         a_old = a
+        model_old = deepcopy(model)
         z_old = []
         for k in model.z.keys():
             if abs(model.z[k].value) > 1e-2:
@@ -420,7 +432,7 @@ if __name__ == "__main__":
     pe.ConcreteModel.getVal = classmethod(getVal)
 
     a_hat = []
-    V = 480
+    V = BINSIZE
     BEGIN = 0
     rambam_data = pd.read_csv(FILENAME)
     a_bar = rambam_data["a"]
@@ -433,6 +445,7 @@ if __name__ == "__main__":
     a_hat = np.asarray(a_hat, dtype = 'int')
     m = MAX_BINS #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     c = [OT_cost]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
+    c += EPS*np.array(range(m))
 
     assign,timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega)
     print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " num of scenarios: ", scenario_num)

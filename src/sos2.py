@@ -107,7 +107,7 @@ def sos2_gurobi(p,b,B):
     md.mysos = pe.SOSConstraint(md.I, rule=rule_mysos, sos=2)
     opt = pe.SolverFactory('gurobi_direct')
     opt.options['TimeLimit'] = TIMELIMIT
-    opt.options['threads'] = 1
+    #opt.options['threads'] = 1
     grb_start_process = time.process_time()
     grb_start_elapsed = time.time()
     results = opt.solve(md,tee=False)
@@ -124,7 +124,7 @@ def sos2_gurobi(p,b,B):
                         if md.t[i, j]() < 1-NZ_TOL:
                             i_max = i
                             break
-                        elif j>0: # j == m - 1:
+                        elif j == m - 1:
                             fin.append(i)
     else:
         print("No Valid Solution Found")
@@ -295,7 +295,7 @@ def write_instance(p_random,b_random,i):
 if __name__ == "__main__":
     random.seed(101)
     for R in [100]: #[1000,10000]:
-        for k_random in [50]: #, 250]: #[50, 100, 150, 200, 250, 300]:
+        for k_random in [50,100,250,500]: #, 250]: #[50, 100, 150, 200, 250, 300]:
             sos2_time_process = []
             sos2_time_elapsed = []
             sos2g_time_process = []
