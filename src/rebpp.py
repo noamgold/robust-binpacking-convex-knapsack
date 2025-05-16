@@ -1,4 +1,5 @@
 from copy import deepcopy
+from json.encoder import INFINITY
 
 from cylp.py.mip.GomoryCutGenerator import epsilon
 from fontTools.misc.cython import returns
@@ -17,7 +18,7 @@ import time
 
 #import os
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_020Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
@@ -36,7 +37,7 @@ __DEBUG_3 = True
 VIOL_TOL = 1e-6
 INT_TOL = 1e-2
 GAPVAL1 = 0.4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.01 # final optimality gap
+GAPVAL2 = 0.05 # final optimality gap
 TIME_LIMIT = 10800
 #3600
 Omega = 0 #1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
@@ -44,10 +45,10 @@ Omega = 0 #1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
 MAX_BINS = 5
 MAX_SCENRIOS = 1e4
 
-SOS_SOLVE = False
-BINSIZE = 720
+SOS_SOLVE = True
+BINSIZE = 600
 OT_cost = 1.5/BINSIZE #0.0021 #0.003
-
+BOUND_OVERFILL = INFINITY #2*BINSIZE
 EPS = 10**-10
 
 import os  # change current path to the file's directory
@@ -109,9 +110,8 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
 
     mdl.sn = pe.Param(initialize = 1,domain=pe.NonNegativeIntegers,mutable=True)
     #mdl.scenarios = pe.Set(initialize=mdl.sn[])
-    #mdl.alpha_bar = pe.Var(mdl.J,pe.NonNegativeReals)
-    mdl.alpha_bar = pe.Var(mdl.J,domain=pe.NonNegativeReals,dense=False)
-    mdl.alpha = pe.Var(mdl.J,pe.NonNegativeIntegers,domain=pe.NonNegativeReals,dense=False)
+    mdl.alpha_bar = pe.Var(mdl.J,domain=pe.NonNegativeReals,dense=False, bounds=(0,BOUND_OVERFILL))
+    mdl.alpha = pe.Var(mdl.J,pe.NonNegativeIntegers,domain=pe.NonNegativeReals,bounds=(0,BOUND_OVERFILL),dense=False)
 
     def assignRule(mdl,i):
         return sum(mdl.z[i, j] for j in mdl.J) == 1
@@ -133,11 +133,14 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     #    return (mdl.alpha_bar[j] <= 2*V*mdl.y[j])    #### experiment with bound on overfilling - can add this for each scenario as well
     #mdl.indConsB = pe.Constraint(mdl.J,rule=indRuleB)
 
-    #def symbreak(mdl, j):
-    #    return (mdl.y[j] >= mdl.y[j+1])
-    #mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
+    def symbreak(mdl, j):
+        return (mdl.y[j] >= mdl.y[j+1])
+    mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
+
     mdl.objCons = pe.Constraint(expr = sum(c[j]*mdl.alpha_bar[j] for j in mdl.J)<= mdl.theta)
     mdl.obj = pe.Objective(expr = sum(mdl.y[j] for j in mdl.J) + mdl.theta, sense=pe.minimize)
+    ##mdl.obj = pe.Objective(expr = (sum(mdl.y[j] for j in mdl.J) + sum(c[j]*mdl.alpha_bar[j] for j in mdl.J) + mdl.theta), sense=pe.minimize)
+
     mdl.scuts = pe.ConstraintList()
 
     return mdl #, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
@@ -189,6 +192,7 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num):
     #mdl.scenarios = mdl.scenarios | pe.Set(initialize=[scenario_num])
     mdl.sn = scenario_num
     for j in mdl.J:
+        ##mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha_bar[j] + mdl.alpha[j, scenario_num])
         mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
         #mdl.scuts.add(mdl.fover[j] <= mdl.alpha[j, scenario_num])
     mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
@@ -291,7 +295,7 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat, model, sos = True):
                 print(p, b)
                 raise ValueError("error in conv knapsack")
             #raise ValueError("remDev>0")
-    return p_star+constant, a
+    return p_star+constant, a, constant
 
 def print_sol(model):
     """
@@ -356,8 +360,8 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
                     if model.z[i, j].value > 1 - INT_TOL:
                         f[j] += a_bar[i]
                         u[j] += a_hat[i]
-                b[j, 1] = max(min(V - f[j], u[j]), 0)
-                b[j, 2] = u[j]  # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
+                b[j, 1] = max(min(V - f[j], min(BOUND_OVERFILL,u[j])), 0)  # for mid breakpoint - min of unfilled capacity and u, positive part
+                b[j, 2] = min(BOUND_OVERFILL,u[j])  ## testing with bounds on u which applies with equal c's           # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
                 p[j, 0] = c[j] * max(f[j] - V, 0)
                 p[j, 1] = c[j] * max(f[j] - V, 0)
                 # p[j,2] = c[j] * max(u[j] - V + f[j], 0)
@@ -375,10 +379,12 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         p_star = 0
         # if np.sum(p[:,2]) > NZ_TOl:
         # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-        p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, SOS_SOLVE)  # False)  # if last argument is false then DP is invoked otherwise SoS
+        p_star, a, constant = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, SOS_SOLVE)  # False)  # if last argument is false then DP is invoked otherwise SoS
         p_star_0 = p_star
 
-        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + 100*VIOL_TOL):
+        print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " constant=", constant, " obj=", pe.value(model.obj.expr), "******")
+
+        if (p_star == p_star_old and a == a_old and p_star > theta_star + 10*VIOL_TOL):
             print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
             print(a)
             print(a_old)
@@ -402,7 +408,6 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
             if abs(model.z[k].value) > 1e-2:
                 z_old.append(model.z[k].getname())
         it += 1
-        print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " ******")
 
         rTime = time.time() - start
         if rTime >= TIME_LIMIT:
