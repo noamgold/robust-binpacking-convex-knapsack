@@ -1,5 +1,7 @@
 from copy import deepcopy
 
+from numpy.core.numeric import Infinity
+from pyomo.common.timing import report_timing
 from pyomo.scripting.interface import pyomo_callback
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 from sympy import false
@@ -13,41 +15,60 @@ from pyomo.opt import SolverStatus, TerminationCondition, SolutionStatus
 import math
 import time
 from functools import partial
-
-DEBUG_CB = True
+##########################################################################
+VALIDINEQ2 = False
+VALIDINEQ = False
+SYMBREAK = False #True
+BRANCH_AND_CUT = False #True
+NO_VAR_GEN = False
+#
+SOS_SOLVE = False
+############################################################
+VIOL_TOL = 1e-4
+INT_TOL = 1e-2
+GAPVAL1 = 0.4 #0.05 #4  # optimality gap to finish 1st phase of algorithm
+GAPVAL2 = 0.01 #0.05 # final optimality gap
+TIME_LIMIT = 7200
+MAX_CUTS = 200
+#################################
+DEBUG_CB = False
+DEBUG_CB_0 = False
 DEBUG_CB_2 = False
+GUROBI_OUTPUT = False
 
+DEBUG_INEQ_NOVAR = False
 #import os
+#"../data/testinstance.csv"
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V04.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv"
+# "../data/testinstance.csv" #
+
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv"
+    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_032Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V04.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #"../data/Dep13300with_a_ahat_test_withlabel.csv"
 #gapVal = 0.1
-"""
-sample small test case
-"""
-__DEBUG = False
-__DEBUG_2 = False
-__DEBUG_3 = True
 
-VIOL_TOL = 1e-6
-INT_TOL = 1e-2
-GAPVAL1 = 0.0001 #4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.0001 # final optimality gap
-TIME_LIMIT = 12000
+
+__DEBUG = False
+__DEBUG_0 = False
+__DEBUG_2 = False
+__DEBUG_3 = False
+
 #3600
-BRANCH_AND_CUT = True
 
 Omega = 1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
+#4
 
-MAX_BINS = 5
+MAX_BINS = 10
 MAX_SCENRIOS = 1e4
 
-SOS_SOLVE = True #True #True # True #True #True
 BINSIZE = 540
-OT_cost = 1.8/BINSIZE #0.0021 #0.003
+# 2
+OT_cost = 1.3/BINSIZE #0.0021 #0.003
+#0.6
 BOUND_OVERFILL = math.inf #2*BINSIZE
 EPS = 10**-10
 
@@ -56,17 +77,15 @@ abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
 
-a_bar = []
-V = []
 
 def getVal(model, var):
         return var.value
 
 def getVars(model):
-    return model.component_data_objects(model, pe.Var,active=False)
+    return model.component_data_objects(pe.Var,active=True)
 
 # robust extensible bin packing problem model init
-def rebppinit_pyomo(a_bar, a_hat, V, c):
+def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
     m = len(c)
     n = len(a_bar)
     #mdl
@@ -80,6 +99,7 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     model.a_hat = a_hat
     model.V = V
     model.c = c
+    model.Omega = Omega
     model.theta = pe.Var(domain=pe.NonNegativeReals)
     #mdl.fover = pe.Var(mdl.J,domain=pe.NonNegativeReals)
 
@@ -109,15 +129,24 @@ def rebppinit_pyomo(a_bar, a_hat, V, c):
     #def indRuleB(mdl,j):
     #    return (mdl.alpha_bar[j] <= 2*V*mdl.y[j])    #### experiment with bound on overfilling - can add this for each scenario as well
     #mdl.indConsB = pe.Constraint(mdl.J,rule=indRuleB)
+    model.sumA = sum(model.a_bar[i] for i in model.I)
 
-    #def symbreak(mdl, j):
-    #    return (mdl.y[j] >= mdl.y[j+1])
-    #mdl.symCons = pe.Constraint(mdl.J[:-1],rule=symbreak)
+    def symbreak(mdl, j):
+        return (mdl.y[j] >= mdl.y[j+1])
+
+    def overtimeLB(mdl, j):
+        return ((mdl.y[j]-mdl.y[j+1])*(mdl.c[0]*(mdl.sumA+mdl.Omega-(j+1)*mdl.V)) <= mdl.theta)
+
+    if SYMBREAK or VALIDINEQ:
+        model.symCons = pe.Constraint(model.J[:-1],rule=symbreak)
+        if VALIDINEQ:  # add only if not generating these dynamically
+            model.otLB = pe.Constraint(model.J[:-1],rule=overtimeLB)
 
     model.objCons = pe.Constraint(expr = sum(c[j]*model.alpha_bar[j] for j in model.J)<= model.theta)
     model.obj = pe.Objective(expr = sum(model.y[j] for j in model.J) + model.theta, sense=pe.minimize)
     ##mdl.obj = pe.Objective(expr = (sum(mdl.y[j] for j in mdl.J) + sum(c[j]*mdl.alpha_bar[j] for j in mdl.J) + mdl.theta), sense=pe.minimize)
     model.scuts = pe.ConstraintList()
+    model.cuts_added = 0
 
     return model #mdl #, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
 
@@ -137,10 +166,14 @@ def add_cut(mdl,a_bar,a):
             sum_expression -= c[j] * V * mdl.y[j]
             for i in binItems:
                 sum_expression += c[j] * (a_bar[i] + a[i]) * mdl.z[i, j]
-    mdl.scuts.add(sum_expression <= mdl.theta)
+    cons = mdl.scuts.add(sum_expression <= mdl.theta)
+    if DEBUG_INEQ_NOVAR:
+        print("found cut, theta: ", mdl.theta.value)
+        cons.pprint()
 
 
-def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = False):
+
+def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
     """
     used to recieve new model and alph
     """
@@ -149,14 +182,12 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = False):
     m = len(a_bar)
     #mdl.scenarios = mdl.scenarios | pe.Set(initialize=[scenario_num])
     mdl.sn = scenario_num
-    if not no_var:
-        for j in mdl.J:
-        ##mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha_bar[j] + mdl.alpha[j, scenario_num])
-            mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
-        #mdl.scuts.add(mdl.fover[j] <= mdl.alpha[j, scenario_num])
     if no_var:
         add_cut(mdl,a_bar,a)
     else:
+        for j in mdl.J:
+        ##mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha_bar[j] + mdl.alpha[j, scenario_num])
+            mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
         mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
     return mdl, mdl.alpha
 
@@ -198,7 +229,8 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
             p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, False)  # true
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
         p_star, items, i_max, _, _ = sos2_gurobi(pp, bb, Omega)
-        print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
+        if __DEBUG_0:
+            print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
 
     else:
         if Omega > 0:
@@ -241,7 +273,7 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     return p_star+constant, a, constant
 
 #model = pe.ConcreteModel()
-opt = pe.SolverFactory('gurobi_persistent')
+opt = pe.SolverFactory('gurobi_persistent', report_timing=True)
 
 """
 class CallbackData:
@@ -279,7 +311,8 @@ def add_cut_two(Z,a_bar,a,V,c,model):
         if DEBUG_CB:
             print([i.item() for i in np.nditer(II)])
         for i in np.nditer(II):
-            sum_expression += c[j.item()] * (a_bar[i.item()] + a[i.item()]) * Z[i.item(), j.item()]
+            aij = c[j.item()] * (a_bar[i.item()] + a[i.item()])
+            sum_expression +=  aij * model.z[i.item(), j.item()]
     return model.scuts.add(sum_expression <= model.theta)
 
 
@@ -287,53 +320,106 @@ def add_cut_two(Z,a_bar,a,V,c,model):
 def my_callback(cb_m, cb_opt, cb_where):
     model = cb_m
     mmodel = opt._solver_model
-
-    if cb_where == GRB.Callback.MIPSOL: # and not cb_m.theta.value is None:
-        #opt.update()
-        if DEBUG_CB:
-            #obj = cb_opt.cbGet(GRB.Callback.MIP_OBJBST)
-            if model.theta.value is None:
-                print("No soln found in callback")
-            # MIP solution callback
-            nodecnt = mmodel.cbGet(GRB.Callback.MIPSOL_NODCNT)
-            obj = mmodel.cbGet(GRB.Callback.MIPSOL_OBJ)
-            solcnt = mmodel.cbGet(GRB.Callback.MIPSOL_SOLCNT)
-            if solcnt > 0:
-                theta = mmodel.getVarByName("theta")
-                print(
-                    f"**** New solution at node {nodecnt:.0f}, obj {obj:g}, "
-                    f"sol {solcnt:.0f}, theta = {theta.Xn:g} ****"
-                )
-                print("found integer node")
-
-                yy = []
-                zz = []
-                if DEBUG_CB_2:
-                    print(mmodel.getVars())
-                for j in model.J:
-                    y = mmodel.getVarByName("y("+str(j)+")")
-                    if y.Xn > 1 - INT_TOL:
-                        yy.append(j)
-                    elif y.Xn > INT_TOL:
-                        print("ERR: non-integer soln")
-                    for i in model.I:
-                        z = mmodel.getVarByName("z(" + str(i) + "_" + str(j) + ")")
-                        if z.Xn > 1-INT_TOL:
-                            zz.append((i,j))
-                n = len(model.a_bar)
-                Z = np.zeros([n, m])
-                idxs = np.array(zz)
-                Z[idxs[:, 0], idxs[:, 1]] = 1
-                pp, bb, _ = create_sos_instance(model.a_bar, model.a_hat, model.V, model.c,model,Z)
-                p_star, a, constant = convex_pw_knapsack_wrapper(pp, bb, model.Omega, Z, a_hat)
-                if p_star > theta.Xn + INT_TOL:
+    if cb_where == GRB.Callback.MIPNODE and VALIDINEQ2:
+        assert model.c[0] == model.c[1] and model.c[0] == model.c[len(model.J)-1]
+        status = GRB.OPTIMAL
+        if cb_where == GRB.Callback.MIPNODE:
+            status = mmodel.cbGet(GRB.Callback.MIPNODE_STATUS)
+        if DEBUG_CB_2:
+            print("in callback status:", status)
+        if status == GRB.OPTIMAL:
+            #print("callback called at MIPNODE")
+            maxJ = None
+            maxYprev = None
+            maxYvar = None
+            maxDiff = 0
+            prevYval = 1-VIOL_TOL
+            yprev = None
+            for j in range(1,1,len(model.J)):
+                y = mmodel.getVarByName("y("+str(j)+")")
+                yval = None
+                if cb_where == GRB.Callback.MIPNODE:
+                    yval = mmodel.cbGetNodeRel(y)  #cbGetSolution(y)
+                else:
+                    yval = mmodel.cbGetSolution(y)
+                if yval > INT_TOL and prevYval - yval > maxDiff + VIOL_TOL:
+                    maxDiff = prevYval - yval
+                    maxJ = j-1
+                    maxYvar = model.y[j]
+                    maxYprev = yprev
+                yprev = model.y[j]
+                prevYval = yval
+            if maxJ is not None:
+                theta = None
+                thetaVar = mmodel.getVarByName("theta")
+                if cb_where == GRB.Callback.MIPNODE:
+                    theta = mmodel.cbGetNodeRel(thetaVar)  # cbGetSolution(y)
+                else:
+                    theta = mmodel.cbGetSolution(thetaVAr)
+                if maxDiff*(model.c[0]*(model.sumA+model.Omega-(maxJ+1)*model.V)) > theta + VIOL_TOL:
+                    cons = model.scuts.add((maxYprev-maxYvar)*(model.c[0]*(model.sumA+model.Omega-(maxJ+1)*model.V)) <= model.theta)
                     if DEBUG_CB:
-                        print("found cut, p_star: ", p_star, " theta: ", theta.Xn)
-                    cb_opt.cbLazy(add_cut_two(Z,a_bar,a,V,c,model))
+                        print("added lazy constraint/cut: ", cons)
+                    cb_opt.cbLazy(cons)
+                    model.cuts_added += 1
 
+    elif cb_where == GRB.Callback.MIPSOL and BRANCH_AND_CUT and model.cuts_added < MAX_CUTS: # and not cb_m.theta.value is None:
+        #opt.update()
+        #obj = cb_opt.cbGet(GRB.Callback.MIP_OBJBST)
+        # MIP solution callback
+        nodecnt = mmodel.cbGet(GRB.Callback.MIPSOL_NODCNT)
+        obj = mmodel.cbGet(GRB.Callback.MIPSOL_OBJBST)
+        solcnt = mmodel.cbGet(GRB.Callback.MIPSOL_SOLCNT)
+        #if model.theta.value is None:
+        #    print("No soln found in Pyomo object, callback, sol count: ", solcnt, " obj: ", obj)
+        theta = mmodel.getVarByName("theta")
+        thetaVal = mmodel.cbGetSolution(theta)
+        if DEBUG_CB_0:
+            print(f"**** New solution at node {nodecnt:.0f}, candidate obj {obj:g}, "f"sol {solcnt:.0f}, theta = {thetaVal:g} ****")
+        yy = []
+        zz = []
+        if DEBUG_CB_2:
+            print(mmodel.getVars())
+        for j in model.J:
+            y = mmodel.getVarByName("y("+str(j)+")")
+            yval = mmodel.cbGetSolution(y)
+            if yval > 1 - INT_TOL:
+                yy.append(j)
+            elif yval > INT_TOL:
+                print("ERR: non-integer soln")
+            for i in model.I:
+                z = mmodel.getVarByName("z(" + str(i) + "_" + str(j) + ")")
+                zval = mmodel.cbGetSolution(z)
+                if zval > 1-INT_TOL:
+                    zz.append((i,j))
+        n = len(model.a_bar)
+        m = len(model.c)
+        Z = np.zeros([n, m])
+        idxs = np.array(zz)
+        Z[idxs[:, 0], idxs[:, 1]] = 1
+        pp, bb, _ = create_sos_instance(model.a_bar, model.a_hat, model.V, model.c,model,Z)
+        p_star, a, constant = convex_pw_knapsack_wrapper(pp, bb, model.Omega, Z, model.a_hat)
+        if p_star > thetaVal + INT_TOL:
+            cons = add_cut_two(Z,model.a_bar,a,model.V,model.c,model)
+            if DEBUG_CB:
+                print("found cut, p_star: ", p_star, " theta: ", thetaVal)
+                cons.pprint()
+            cb_opt.cbLazy(cons)
+            model.cuts_added += 1
+
+def print_sol(model):
+    #used to print the values of the variables and the objective value
+    #for var in model.getVars():
+    #    val = model.getVal(var)
+    #    if val != 0:
+    #        print(var,":",model.getVal(var), end=" ")
+    pe.display(model.z)
+    print("\nmodel obj val: ",pe.value(model.obj.expr))
 
 def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
     n = len(a_bar)
+    m = len(c)
+    #print("n=",n, " m=", m)
     f = {}
     u = {}
     b = np.zeros((m, 3), int)
@@ -379,20 +465,23 @@ def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
 def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     n = len(a_bar)
     m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
-    print("Read file with ", n, " items", " m=", m)
-
     scenario_num = 0
     #global model
-    model = rebppinit_pyomo(a_bar, a_hat, V, c)
-    model.Omega = Omega
+    model = rebppinit_pyomo(a_bar, a_hat, V, c,Omega)
+    #model.Omega = Omega
 
+    print("solving.. Tau0=", GAPVAL1, " Tau1=", GAPVAL2, " Cuts: ", BRANCH_AND_CUT)
     global opt
     opt.set_instance(model,symbolic_solver_labels=True)
 
-    if BRANCH_AND_CUT:
-        opt.set_gurobi_param('PreCrush', 1)
-        opt.set_gurobi_param('LazyConstraints', 1)
+    if BRANCH_AND_CUT or VALIDINEQ2:
+        #opt.set_gurobi_param('PreCrush', 1)
+        #opt.set_gurobi_param('LazyConstraints', 1)
+        #opt.options['PreCrush']=1
+        #opt.options['VarBranch'] = 2
         opt.options['LazyConstraints'] = 1
+        opt.options['PreCrush'] = 1
+        opt.options['DisplayInterval'] = 300
         opt.set_callback(my_callback)
 
     gapVal = GAPVAL1
@@ -418,8 +507,10 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         #callback_data = CallbackData(gModel.getVars())
         #callback_func = partial(my_callback_g, cbdata=callback_data)
         #gModel.optimize(callback_func)
-
-        results = opt.solve(model, tee=False)
+        solverOutput = False
+        if DEBUG_CB or DEBUG_INEQ_NOVAR or GUROBI_OUTPUT:
+            solverOutput = True
+        results = opt.solve(model, tee=solverOutput)
         masterTime += time.time() - masterStart
         soln = results.Solution
         status = results.Solver.status  # results.Solver()['Termination condition'].value
@@ -434,7 +525,6 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
             # p = np.append(p, np.array([[c[j] * max(f[j] - V, 0), c[j] * max(f[j] - V, 0), c[j] * max(u[j] - V + f[j], 0)]]), axis=0)
         if __DEBUG:
             print("Before running convex knapsack, Omega=", Omega, " p=", p, " b=", b)
-        p_star = 0
         # if np.sum(p[:,2]) > NZ_TOl:
         # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
 
@@ -442,9 +532,11 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         p_star_0 = p_star
 
         theta_star = model.theta.value
-        print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " constant=", constant, " obj=", pe.value(model.obj.expr), "******")
+        print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " constant=", constant, " obj=", pe.value(model.obj.expr), " cuts: ", model.cuts_added, "******")
+        if DEBUG_INEQ_NOVAR:
+            print_sol(model)
 
-        if (p_star == p_star_old and a == a_old and p_star > theta_star + 10*VIOL_TOL):
+        if False: #(p_star == p_star_old and a == a_old and p_star > theta_star + 10*VIOL_TOL):
             print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
             print(a)
             print(a_old)
@@ -475,8 +567,8 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         if rTime >= TIME_LIMIT:
             print("time limit")
             break
-        elif BRANCH_AND_CUT or p_star <= theta_star + VIOL_TOL:
-            if gapVal == GAPVAL2 or BRANCH_AND_CUT:
+        elif p_star <= theta_star + VIOL_TOL or (BRANCH_AND_CUT and MAX_CUTS == Infinity):
+            if gapVal == GAPVAL2: #or BRANCH_AND_CUT:
                 print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
                 # print_sol(model)
                 numBins = sum(model.y[j].value for j in model.J)
@@ -495,14 +587,13 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     for k in model.z.keys():
         if abs(model.z[k].value) > 1e-2:
             assign = pd.concat([assign,pd.DataFrame(np.array([[k[0], k[1]]]), columns=assign.columns)],ignore_index=True)
-    return assign, timeL, runTime, masterTime, numBins, scenario_num, model.theta.value, pe.value(model.obj.expr)
+    return assign, timeL, runTime, masterTime, numBins, scenario_num, model.theta.value, pe.value(model.obj.expr), model.cuts_added
 
 if __name__ == "__main__":
     # example problem
 
     pe.ConcreteModel.getVal = classmethod(getVal)
 
-    a_hat = []
     V = BINSIZE
     BEGIN = 0
     rambam_data = pd.read_csv(FILENAME)
@@ -516,10 +607,11 @@ if __name__ == "__main__":
     a_hat = np.asarray(a_hat, dtype = 'int')
     m = MAX_BINS #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     c = [OT_cost]*m #[0.003,0.003,0.003,0.003,0.003,0.003,0.003,0.003]
-    c += EPS*np.array(range(m))
+    #c += EPS*np.array(range(m))
 
-    assign,timeL, runTime, masterTime, numBins, scenario_num, thetastar, obj = solve_instance(a_bar, a_hat, V, c,Omega)
-    print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " theta*: ", thetastar, " obj=", obj, " num of scenarios: ", scenario_num)
+    # assign, timeL, runTime, masterTime, numBins, scenario_num, model.theta.value, pe.value(model.obj.expr), model.cuts_added
+    assign,timeL, runTime, masterTime, numBins, scenario_num, thetastar, obj, cuts_added = solve_instance(a_bar, a_hat, V, c,Omega)
+    print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " theta*: ", thetastar, " obj=", obj, " num of scenarios: ", scenario_num, " cuts added:", cuts_added)
     #error("quit")
     print(assign)
     assign.to_csv(FILENAME + "_schedule.csv")
@@ -668,13 +760,6 @@ def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
 
     return model, alpha
     
-def print_sol(model):
-    #used to print the values of the variables and the objective value
-    for var in model.getVars():
-        val = model.getVal(var)
-        if val != 0:
-            print(var,":",model.getVal(var), end=" ")
-    print("\nmodel obj val: ",model.getObjVal())
 """
 
 

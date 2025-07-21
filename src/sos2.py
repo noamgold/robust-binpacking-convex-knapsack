@@ -28,7 +28,7 @@ from knapsack import for_loop_method_all_w, generate_random_instance, for_loop_m
 
 __DEBUG = False
 __DEBUG_2 = False
-__DEBUG_3 = False
+__DEBUG_3 = True
 
 NZ_TOL = 1e-10
 TIMELIMIT = 1800

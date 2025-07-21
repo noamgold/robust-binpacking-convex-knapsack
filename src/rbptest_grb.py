@@ -14,8 +14,6 @@ from pyomo.opt import SolverStatus, TerminationCondition
 
 __DEBUG = False
 #if __name__ == "__main__":
-VIOL_TOL = 1e-3
-INT_TOL = 1e-3
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
@@ -37,7 +35,7 @@ def read_instance(i,sz):
     return test_data.iloc[:,0]
 
 #test_data = pd.read_csv("../data/ma30.csv")
-for sz in [30, 60,90]:
+for sz in [30]: # [30, 60,90]:
     runTimes = []
     masterTimes = []
     runIter = []
@@ -59,7 +57,7 @@ for sz in [30, 60,90]:
         m = int(math.ceil(2*(sum(a_bar)+Omega)/V))
         c = np.ones(m)*c_mult
         print("Read file with ", n, " items", " m=", m)
-        tmp, timeL, runTime, masterTime, numBins, scenario_num = solve_instance(a_bar, a_hat, V, c,Omega,TIME_LIMIT)
+        tmp, timeL, runTime, masterTime, numBins, scenario_num, theta_val, obj, cuts_added = solve_instance(a_bar, a_hat, V, c,Omega,TIME_LIMIT)
         '''alpha = {}
         scenario_num = 0
         opt = pe.SolverFactory('gurobi_direct')
@@ -179,7 +177,7 @@ for sz in [30, 60,90]:
     print(" & {t1:.1f} & {t2:.1f} & {t3:.1f} & {t4:.1f} & {t5:.1f} & {t6:} & {t7:.1f} & {t8:} & {t9:} ".format(t1=stat.mean(runTimes),t2=max(runTimes),t3=stat.mean(masterTimes), t4=max(masterTimes), t5=stat.mean(runIter), t6=max(runIter),t7=stat.mean(runBins), t8=max(runBins), t9=num_tests - len(runTimesWoTL)))
     print(" & ", stat.mean(runTimesWoTL), " & ", max(runTimesWoTL), " & ", stat.mean(masterTimesWoTL), " & ", max(masterTimesWoTL))
 
-
+    print("cuts_added: ",cuts_added)
 #print(" & ", stat.mean(runTimes), " & ", max(runTimes), " & ", stat.mean(runIter), " & ", max(runIter), " & ", stat.mean(runBins), " & ", max(runBins))
 
 #runTimesWoTL = list(filter(lambda x: x<TIME_LIMIT,runTimes))
