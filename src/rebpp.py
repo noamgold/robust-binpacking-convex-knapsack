@@ -14,35 +14,41 @@ import pyomo.environ as pe
 from pyomo.opt import SolverStatus, TerminationCondition, SolutionStatus
 import math
 import time
+from numba import jit
+
 from functools import partial
 ##########################################################################
-VALIDINEQ2 = False
-VALIDINEQ = False
-SYMBREAK = False #True
-BRANCH_AND_CUT = False #True
+VALIDINEQ2 = False    # inequalities added dynamically
+VALIDINEQ = True #True   # m inequalities added in init
+SYMBREAK = True #True #True      # symmetry breaking by ordering bins
+ITEMSYMBREAK = False #True #True         # symmetry breaking by ordering equal sized bins (currently looks only at nominal size, assuming proportional deviation)
+BRANCH_AND_CUT = False #True #True
 NO_VAR_GEN = False
 #
 SOS_SOLVE = False
+MIP_START_OR_HINT = 2 # 2- hint, 1- Start, 0 - none
 ############################################################
 VIOL_TOL = 1e-4
 INT_TOL = 1e-2
-GAPVAL1 = 0.4 #0.05 #4  # optimality gap to finish 1st phase of algorithm
+GAPVAL1 = 0.2 #0.05 #4  # optimality gap to finish 1st phase of algorithm
 GAPVAL2 = 0.01 #0.05 # final optimality gap
 TIME_LIMIT = 7200
-MAX_CUTS = 200
+MAX_CUTS = math.inf
 #################################
 DEBUG_CB = False
 DEBUG_CB_0 = False
 DEBUG_CB_2 = False
-GUROBI_OUTPUT = False
-
+GUROBI_OUTPUT = True
 DEBUG_INEQ_NOVAR = False
+
+BOUND_OVERFILL = math.inf  # 2*BINSIZE
+
 #import os
 #"../data/testinstance.csv"
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
 # "../data/testinstance.csv" #
 
-FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+FILENAME = "../data/testinstance.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_032Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V04.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv"
     #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
@@ -58,19 +64,6 @@ __DEBUG_2 = False
 __DEBUG_3 = False
 
 #3600
-
-Omega = 1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
-#4
-
-MAX_BINS = 10
-MAX_SCENRIOS = 1e4
-
-BINSIZE = 540
-# 2
-OT_cost = 1.3/BINSIZE #0.0021 #0.003
-#0.6
-BOUND_OVERFILL = math.inf #2*BINSIZE
-EPS = 10**-10
 
 import os  # change current path to the file's directory
 abspath = os.path.abspath(__file__)
@@ -88,6 +81,9 @@ def getVars(model):
 def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
     m = len(c)
     n = len(a_bar)
+
+    b = np.diff(a_bar)
+    min_abar_diff = b[b > 0].min()
     #mdl
     model = pe.ConcreteModel()
     pe.ConcreteModel.getVal = classmethod(getVal)
@@ -120,7 +116,7 @@ def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
     model.capacityCons = pe.Constraint(model.J, rule=capacityRule)
 
     def indRule(mdl,i,j):
-        return (mdl.z[i,j] <= mdl.y[j])
+        return mdl.z[i,j] <= mdl.y[j]
     model.indCons = pe.Constraint(model.I,model.J,rule=indRule)
 
     #def overFlowRule(mdl, j):
@@ -132,10 +128,28 @@ def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
     model.sumA = sum(model.a_bar[i] for i in model.I)
 
     def symbreak(mdl, j):
-        return (mdl.y[j] >= mdl.y[j+1])
+        return mdl.y[j] >= mdl.y[j+1]
+
+    def itemSymBreak(mdl, i, j):
+        #return (mdl.z[i,j] - mdl.z[i+1,j] <= (a_bar[i+1]-a_bar[i])/min_abar_diff)
+        if i < j:
+            return pe.Constraint.Skip
+        #return sum(mdl.z[i,p] for p in range(j,min(m,i+1))) <= sum(mdl.z[p,j-1] for p in range(i))
+        return (sum(mdl.z[i,p] for p in range(j,min(m,i+1))) <= sum(mdl.z[p,j-1] for p in range(j-1,i)))
+
+    def itemSymBreakB(mdl, i):
+        return sum(mdl.z[i,j] for j in range(i+1)) == 1
 
     def overtimeLB(mdl, j):
-        return ((mdl.y[j]-mdl.y[j+1])*(mdl.c[0]*(mdl.sumA+mdl.Omega-(j+1)*mdl.V)) <= mdl.theta)
+        ot = mdl.sumA+mdl.Omega-(j+1)*mdl.V
+        if ot <= 0:
+            return pe.Constraint.Skip
+        return (1-mdl.y[j+1])*mdl.c[0]*ot <= mdl.theta
+    #((mdl.y[j]-mdl.y[j+1])*(mdl.c[0]*(mdl.sumA+mdl.Omega-(j+1)*mdl.V)) <= mdl.theta)
+
+    if ITEMSYMBREAK:
+        model.symConsItemA = pe.Constraint(range(1,n),range(1,m), rule=itemSymBreak)
+        model.symConsItemB = pe.Constraint(model.J, rule=itemSymBreakB)         #pe.Constraint(model.I[:-1],model.J, rule=itemSymBreak))
 
     if SYMBREAK or VALIDINEQ:
         model.symCons = pe.Constraint(model.J[:-1],rule=symbreak)
@@ -143,7 +157,8 @@ def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
             model.otLB = pe.Constraint(model.J[:-1],rule=overtimeLB)
 
     model.objCons = pe.Constraint(expr = sum(c[j]*model.alpha_bar[j] for j in model.J)<= model.theta)
-    model.obj = pe.Objective(expr = sum(model.y[j] for j in model.J) + model.theta, sense=pe.minimize)
+
+    model.obj = pe.Objective(expr = (sum(model.y[j] for j in model.J) + model.theta), sense=pe.minimize)
     ##mdl.obj = pe.Objective(expr = (sum(mdl.y[j] for j in mdl.J) + sum(c[j]*mdl.alpha_bar[j] for j in mdl.J) + mdl.theta), sense=pe.minimize)
     model.scuts = pe.ConstraintList()
     model.cuts_added = 0
@@ -191,7 +206,7 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
         mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
     return mdl, mdl.alpha
 
-
+#@jit(nopython=False)
 def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     """
     used to retrive the p_star and a values
@@ -212,10 +227,10 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     constant = 0
     #itemsConstant = set([])
     for i in range(m):
-        if not all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
+        if not np.all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
             print(p, b)
             raise ValueError("nonconvex p")
-        if not all(b[i, j] <= b[i, j + 1] for j in range(nn - 1)):
+        if not np.all(b[i, j] <= b[i, j + 1] for j in range(nn - 1)):
             print(p, b)
             raise ValueError("nonconvex b")
         if p[i, 0] > INT_TOL:  #and not sos:
@@ -263,8 +278,8 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
                 p_star_2 = p_star_k
                 items_2 = items_k
                 i_max_2 = i_max_k
-            print ("items=",items, " i_max=", i_max, " remDev=", remDev, " sumU=", sum(b[i,2] for i in range(m)), " sum b[:,1]=", sum(b[i,1] for i in range(m)),
-                   " Omega=", Omega, " p_star=", p_star, " p_star_2=", p_star_2, " constant=", constant, " items_2", items_2, " i_max_2=", i_max_2)
+            #print ("items=",items, " i_max=", i_max, " remDev=", remDev, " sumU=", sum(b[i,2] for i in range(m)), " sum b[:,1]=", sum(b[i,1] for i in range(m)),
+            #       " Omega=", Omega, " p_star=", p_star, " p_star_2=", p_star_2, " constant=", constant, " items_2", items_2, " i_max_2=", i_max_2)
             if (not sos and abs(p_star_2 - (p_star+constant)) > 1e-3) or (sos and p_star_k and abs(p_star_2- p_star) > 1e-3):
                 #print("p_star sos = ", p_star, " items=", items, " i_max=", i_max, " p_star_2=", p_star_2, " i_max_2=", i_max_2, " items_2=", items_2, " constant=", constant)
                 print(p, b)
@@ -273,31 +288,33 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     return p_star+constant, a, constant
 
 #model = pe.ConcreteModel()
+
+#@jit(nopython=True)
+def callback_helper(mmodel,model):
+    yy = []
+    #zz = []
+    n = len(model.a_bar)
+    m = len(model.c)
+    Z = np.zeros([n, m])
+
+    for j in model.J:
+        #y = mmodel.getVarByName("y(" + str(j) + ")")
+        #yval = mmodel.cbGetSolution(y)
+        #if yval > 1 - INT_TOL:
+        #    yy.append(j)
+        #elif yval > INT_TOL:
+        #    print("ERR: non-integer soln")
+        for i in model.I:
+            z = mmodel.getVarByName("z(" + str(i) + "_" + str(j) + ")")
+            zval = mmodel.cbGetSolution(z)
+            if zval > 1 - INT_TOL:
+                #zz.append((i, j))
+                Z[i,j]=1
+    #idxs = np.array(zz)
+    #Z[idxs[:, 0], idxs[:, 1]] = 1
+    return Z
+
 opt = pe.SolverFactory('gurobi_persistent', report_timing=True)
-
-"""
-class CallbackData:
-    def __init__(self, modelvars):
-        self.modelvars = modelvars
-        self.lastiter = -GRB.INFINITY
-        self.lastnode = -GRB.INFINITY
-
-def my_callback_g(mmodel, where,*, cbdata):
-    if where == GRB.Callback.MIPSOL:
-        # MIP solution callback
-        nodecnt = mmodel.cbGet(GRB.Callback.MIPSOL_NODCNT)
-        obj = mmodel.cbGet(GRB.Callback.MIPSOL_OBJ)
-        solcnt = mmodel.cbGet(GRB.Callback.MIPSOL_SOLCNT)
-        if solcnt > 0:
-            x = mmodel.cbGetSolution(cbdata.modelvars)
-            theta = mmodel.getVarByName("theta")
-        #for v in vars:
-        #    print(v.VarName)
-            print(
-                f"**** New solution at node {nodecnt:.0f}, obj {obj:g}, "
-                f"sol {solcnt:.0f}, theta = {theta.Xn:g} ****"
-            )
-"""
 
 def add_cut_two(Z,a_bar,a,V,c,model):
     fill = (a_bar+a)@Z
@@ -320,92 +337,34 @@ def add_cut_two(Z,a_bar,a,V,c,model):
 def my_callback(cb_m, cb_opt, cb_where):
     model = cb_m
     mmodel = opt._solver_model
-    if cb_where == GRB.Callback.MIPNODE and VALIDINEQ2:
-        assert model.c[0] == model.c[1] and model.c[0] == model.c[len(model.J)-1]
-        status = GRB.OPTIMAL
-        if cb_where == GRB.Callback.MIPNODE:
-            status = mmodel.cbGet(GRB.Callback.MIPNODE_STATUS)
-        if DEBUG_CB_2:
-            print("in callback status:", status)
-        if status == GRB.OPTIMAL:
-            #print("callback called at MIPNODE")
-            maxJ = None
-            maxYprev = None
-            maxYvar = None
-            maxDiff = 0
-            prevYval = 1-VIOL_TOL
-            yprev = None
-            for j in range(1,1,len(model.J)):
-                y = mmodel.getVarByName("y("+str(j)+")")
-                yval = None
-                if cb_where == GRB.Callback.MIPNODE:
-                    yval = mmodel.cbGetNodeRel(y)  #cbGetSolution(y)
-                else:
-                    yval = mmodel.cbGetSolution(y)
-                if yval > INT_TOL and prevYval - yval > maxDiff + VIOL_TOL:
-                    maxDiff = prevYval - yval
-                    maxJ = j-1
-                    maxYvar = model.y[j]
-                    maxYprev = yprev
-                yprev = model.y[j]
-                prevYval = yval
-            if maxJ is not None:
-                theta = None
-                thetaVar = mmodel.getVarByName("theta")
-                if cb_where == GRB.Callback.MIPNODE:
-                    theta = mmodel.cbGetNodeRel(thetaVar)  # cbGetSolution(y)
-                else:
-                    theta = mmodel.cbGetSolution(thetaVAr)
-                if maxDiff*(model.c[0]*(model.sumA+model.Omega-(maxJ+1)*model.V)) > theta + VIOL_TOL:
-                    cons = model.scuts.add((maxYprev-maxYvar)*(model.c[0]*(model.sumA+model.Omega-(maxJ+1)*model.V)) <= model.theta)
-                    if DEBUG_CB:
-                        print("added lazy constraint/cut: ", cons)
-                    cb_opt.cbLazy(cons)
-                    model.cuts_added += 1
 
-    elif cb_where == GRB.Callback.MIPSOL and BRANCH_AND_CUT and model.cuts_added < MAX_CUTS: # and not cb_m.theta.value is None:
+    if cb_where == GRB.Callback.MIPSOL and BRANCH_AND_CUT and model.cuts_added < MAX_CUTS: # and not cb_m.theta.value is None:
         #opt.update()
         #obj = cb_opt.cbGet(GRB.Callback.MIP_OBJBST)
         # MIP solution callback
         nodecnt = mmodel.cbGet(GRB.Callback.MIPSOL_NODCNT)
         obj = mmodel.cbGet(GRB.Callback.MIPSOL_OBJBST)
+        theta = mmodel.getVarByName("theta")
+        thetaVal = mmodel.cbGetSolution(theta)
         solcnt = mmodel.cbGet(GRB.Callback.MIPSOL_SOLCNT)
         #if model.theta.value is None:
         #    print("No soln found in Pyomo object, callback, sol count: ", solcnt, " obj: ", obj)
-        theta = mmodel.getVarByName("theta")
-        thetaVal = mmodel.cbGetSolution(theta)
         if DEBUG_CB_0:
             print(f"**** New solution at node {nodecnt:.0f}, candidate obj {obj:g}, "f"sol {solcnt:.0f}, theta = {thetaVal:g} ****")
-        yy = []
-        zz = []
         if DEBUG_CB_2:
             print(mmodel.getVars())
-        for j in model.J:
-            y = mmodel.getVarByName("y("+str(j)+")")
-            yval = mmodel.cbGetSolution(y)
-            if yval > 1 - INT_TOL:
-                yy.append(j)
-            elif yval > INT_TOL:
-                print("ERR: non-integer soln")
-            for i in model.I:
-                z = mmodel.getVarByName("z(" + str(i) + "_" + str(j) + ")")
-                zval = mmodel.cbGetSolution(z)
-                if zval > 1-INT_TOL:
-                    zz.append((i,j))
-        n = len(model.a_bar)
-        m = len(model.c)
-        Z = np.zeros([n, m])
-        idxs = np.array(zz)
-        Z[idxs[:, 0], idxs[:, 1]] = 1
-        pp, bb, _ = create_sos_instance(model.a_bar, model.a_hat, model.V, model.c,model,Z)
+        Z = callback_helper(mmodel,model)
+        pp, bb, _ = create_sos_instance(model.a_bar, model.a_hat, model.V, model.c, [], Z)
         p_star, a, constant = convex_pw_knapsack_wrapper(pp, bb, model.Omega, Z, model.a_hat)
         if p_star > thetaVal + INT_TOL:
-            cons = add_cut_two(Z,model.a_bar,a,model.V,model.c,model)
+            cons = add_cut_two(Z, model.a_bar, a, model.V, model.c, model)
             if DEBUG_CB:
                 print("found cut, p_star: ", p_star, " theta: ", thetaVal)
                 cons.pprint()
             cb_opt.cbLazy(cons)
             model.cuts_added += 1
+    #else:
+    #raise Exception("invalid callback..")
 
 def print_sol(model):
     #used to print the values of the variables and the objective value
@@ -433,16 +392,22 @@ def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
         y = np.amax(Z,axis=0)
 
     for j in range(m):
-        yj = model.y[j].value
-        if not Z is None:
+        yj = None
+        if Z is None:
+            yj = model.y[j].value
+        #if not Z is None:
+        else:
             yj = y[j]
         if  yj > 1 - INT_TOL:
             f[j] = 0
             u[j] = 0
             for i in range(n):
                 # print("loop problem")
-                zij = model.z[i, j].value
-                if not Z is None:
+                zij = None
+                if Z is None:
+                    zij = model.z[i, j].value
+                #if not Z is None:
+                else:
                     zij = Z[i,j]
                 if  zij > 1 - INT_TOL:
                     if Z is None:
@@ -480,7 +445,8 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         #opt.options['PreCrush']=1
         #opt.options['VarBranch'] = 2
         opt.options['LazyConstraints'] = 1
-        opt.options['PreCrush'] = 1
+        #opt.options['PreCrush'] = 1
+        opt.options['Presolve'] = 2
         opt.options['DisplayInterval'] = 300
         opt.set_callback(my_callback)
 
@@ -494,7 +460,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     p_star_old = math.inf
     a_old = []
     z_old = []
-    model_old = []
+    #model_old = []
     while True:
         opt.options["MIPGap"] = gapVal
         opt.options['TimeLimit'] = int(float(timelimit)-(time.time()-start))
@@ -510,6 +476,13 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         solverOutput = False
         if DEBUG_CB or DEBUG_INEQ_NOVAR or GUROBI_OUTPUT:
             solverOutput = True
+        if it > 0 and MIP_START_OR_HINT:
+            for k in z_old:
+                if MIP_START_OR_HINT == 2:
+                    opt.set_var_attr(model.z[k], 'VarHintVal', 1)
+                else:
+                    opt.set_var_attr(model.z[k], 'Start', 1)
+
         results = opt.solve(model, tee=solverOutput)
         masterTime += time.time() - masterStart
         soln = results.Solution
@@ -556,18 +529,19 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
 
         p_star_old = p_star
         a_old = a
-        model_old = deepcopy(model)
+        #model_old = deepcopy(model)
         z_old = []
         for k in model.z.keys():
             if abs(model.z[k].value) > 1e-2:
-                z_old.append(model.z[k].getname())
+                z_old.append(k)
+                #z_old.append(model.z[k].getname())
         it += 1
 
         rTime = time.time() - start
         if rTime >= TIME_LIMIT:
             print("time limit")
             break
-        elif p_star <= theta_star + VIOL_TOL or (BRANCH_AND_CUT and MAX_CUTS == Infinity):
+        elif p_star <= theta_star + VIOL_TOL or (BRANCH_AND_CUT and MAX_CUTS == math.inf):
             if gapVal == GAPVAL2: #or BRANCH_AND_CUT:
                 print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
                 # print_sol(model)
@@ -591,6 +565,16 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
 
 if __name__ == "__main__":
     # example problem
+
+    Omega = 4  # 1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
+    # 4
+    MAX_BINS = 20
+    MAX_SCENRIOS = 1e4
+    BINSIZE = 2  # 540
+    # 2
+    OT_cost = 0.6  # 1.3/BINSIZE #0.0021 #0.003
+    # 0.6
+    #
 
     pe.ConcreteModel.getVal = classmethod(getVal)
 

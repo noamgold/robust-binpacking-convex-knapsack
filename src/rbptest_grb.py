@@ -10,10 +10,10 @@ import statistics as stat
 import pyomo.environ as pe
 from pyomo.opt import SolverStatus, TerminationCondition
 
-
-
 __DEBUG = False
 #if __name__ == "__main__":
+NUM_ITEMS = 90 #20 #20 #90
+num_items = [30] #[30,60,90] #[60,90]
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
@@ -30,12 +30,17 @@ V_mult = 1/8
 
 
 
-def read_instance(i,sz):
-    test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt",skiprows=[1])
-    return test_data.iloc[:,0]
+def read_instance(i,sz,ss):
+    #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
+    fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
+    print("opening: ", fileName)
+    test_data = pd.read_csv(fileName,skiprows=[1])
+    #test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
+    a_bar = np.sort(test_data.iloc[range(ss),0])
+    return a_bar
 
 #test_data = pd.read_csv("../data/ma30.csv")
-for sz in [30]: # [30, 60,90]:
+for sz in num_items: # [30, 60,90]:
     runTimes = []
     masterTimes = []
     runIter = []
@@ -46,7 +51,7 @@ for sz in [30]: # [30, 60,90]:
         #test_data = pd.read_csv("../data/ma30.csv")
         #a_bar = test_data["a_bar_" + str(instNum)]
         # The processing-time deviation is 0.2 times the processing time, rounded to the nearest higher integer;
-        a_bar = read_instance(instNum,sz)
+        a_bar = read_instance(instNum,sz,min(NUM_ITEMS,sz))
         a_hat = (np.ceil(devProp*a_bar)).astype(int)
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))
@@ -58,113 +63,6 @@ for sz in [30]: # [30, 60,90]:
         c = np.ones(m)*c_mult
         print("Read file with ", n, " items", " m=", m)
         tmp, timeL, runTime, masterTime, numBins, scenario_num, theta_val, obj, cuts_added = solve_instance(a_bar, a_hat, V, c,Omega,TIME_LIMIT)
-        '''alpha = {}
-        scenario_num = 0
-        opt = pe.SolverFactory('gurobi_direct')
-        opt.options['TimeLimit'] = TIME_LIMIT
-        gapVal = GAPVAL1
-        start = time.time()
-        #model, theta, y, f_bar, z = rebppinit_pyomo(a_bar, a_hat, V, c)
-        model = rebppinit_pyomo(a_bar, a_hat, V, c)
-
-        it = 0
-        numBins = 0
-        masterTime = 0
-        rTime = 0
-        timeL = False
-        p_star_old = math.inf
-        a_old = []
-        #p_old = []
-        #b_old = []
-        z_old = []
-
-        while True:
-            f = {}
-            u = {}
-            opt.options["MIPGap"] = gapVal
-            masterStart = time.time()
-            results = opt.solve(model, tee=False)
-            masterTime += time.time()-masterStart
-            status = results.Solver.status #results.Solver()['Termination condition'].value
-            if status != SolverStatus.ok: #TerminationCondition.optimal: #'optimal':
-                print('error occurred, status: {status}.  Check model!')
-            if results.solver.termination_condition == TerminationCondition.maxTimeLimit:
-                timeL = True
-                break
-
-            b = np.zeros((m, 3), int)
-            p = np.zeros((m, 3), float)
-            theta_star = model.theta.value
-            numBins = 0
-            for j in range(m):
-                if model.y[j].value > 1-INT_TOL:
-                    f[j] = 0
-                    u[j] = 0
-                    numBins += 1
-                    for i in range(n):
-                        # print("loop problem")
-                        if model.z[i, j].value > 1-INT_TOL:
-                            f[j] += a_bar[i]
-                            u[j] += a_hat[i]
-                    b[j,1] = max(min(V - f[j],u[j]), 0)
-                    b[j,2] = u[j] #,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
-                    p[j,0] = c[j] * max(f[j] - V, 0)
-                    p[j,1] = p[j,0]
-                    #p[j,2] = c[j] * max(u[j] - V + f[j], 0)
-                    p[j, 2] = c[j] * ( b[j,2]-b[j,1] + max(f[j] - V, 0))
-                #p = np.append(p, np.array([[c[j] * max(f[j] - V, 0), c[j] * max(f[j] - V, 0), c[j] * max(u[j] - V + f[j], 0)]]), axis=0)
-            #print(b)
-            #print(p)
-            if __DEBUG:
-                print("Before running convex knapsack, Omega=", Omega, " p=", p, " b=", b)
-            p_star = 0
-            #if np.sum(p[:,2]) > NZ_TOl:
-            #p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-            p_star, a = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True) #False)
-            p_star_0 = p_star
-
-            if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + VIOL_TOL):
-                print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
-                print(a)
-                print(a_old)
-                #print(a_0)
-                print(p)
-                print(b)
-                #print(p_old)
-                #print(b_old)
-                print(Omega)
-                for k in model.z.keys():
-                    if abs(model.z[k].value) > 1e-2:
-                        print(model.z[k].getname(), model.z[k].value, end=' ')
-                print('')
-                print(z_old)
-                raise Exception("breaking..")
-
-            p_star_old = p_star
-            a_old = a
-            z_old=[]
-            for k in model.z.keys():
-                if abs(model.z[k].value) > 1e-2:
-                    z_old.append(model.z[k].getname())
-            it += 1
-            print("iteration: ", it, " p_star val: ", p_star, " theta_star: ", theta_star, " ******")
-
-            rTime = time.time() - start
-            if rTime >= TIME_LIMIT:
-                print("time limit")
-                break
-            elif p_star <= theta_star + VIOL_TOL:
-                if gapVal == GAPVAL2:
-                    print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
-                    #print_sol(model)
-                    break
-                else:
-                    gapVal = GAPVAL2
-                    print("setting gapVal: ", gapVal)
-            model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)
-            scenario_num += 1
-        runTime = time.time()-start
-        print("Elapsed time instance instNum=", instNum, " elapsed time: ", runTime) '''
 
         if timeL == False and runTime < TIME_LIMIT-1e-6:
             runTimesWoTL.append(runTime)
