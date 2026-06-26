@@ -1,7 +1,6 @@
-from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
+#from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 #from knapsack import rebppinit, update_rebpp
-from sos2 import sos2, convex_pw_knapsack_dp
-from rebpp import rebppinit_pyomo, update_rebpp_pyomo, convex_pw_knapsack_wrapper, print_sol, solve_instance
+from rebpp import rebppinit_pyomo, print_sol, solve_instance
 import numpy as np
 import pandas as pd
 import math
@@ -12,8 +11,8 @@ from pyomo.opt import SolverStatus, TerminationCondition
 
 __DEBUG = False
 #if __name__ == "__main__":
-NUM_ITEMS = 90 #20 #20 #90
-num_items = [30] #[30,60,90] #[60,90]
+NUM_ITEMS = 90 #20 #90
+num_items = [20] #[20,30,60,90] #[30,60,90] #[60,90]
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
@@ -31,8 +30,8 @@ V_mult = 1/8
 
 
 def read_instance(i,sz,ss):
-    #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
-    fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
+    fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
+    #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
     print("opening: ", fileName)
     test_data = pd.read_csv(fileName,skiprows=[1])
     #test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
@@ -51,7 +50,12 @@ for sz in num_items: # [30, 60,90]:
         #test_data = pd.read_csv("../data/ma30.csv")
         #a_bar = test_data["a_bar_" + str(instNum)]
         # The processing-time deviation is 0.2 times the processing time, rounded to the nearest higher integer;
-        a_bar = read_instance(instNum,sz,min(NUM_ITEMS,sz))
+        a_bar = []
+        if sz < 30:
+            a_bar = read_instance(instNum, 30, min(NUM_ITEMS, sz))
+        else:
+            a_bar = read_instance(instNum,sz,min(NUM_ITEMS,sz))
+
         a_hat = (np.ceil(devProp*a_bar)).astype(int)
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))

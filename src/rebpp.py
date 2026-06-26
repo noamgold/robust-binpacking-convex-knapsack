@@ -1,10 +1,15 @@
-from copy import deepcopy
+import os
+import sys
+env_name = os.environ.get('CONDA_DEFAULT_ENV')
+print(f"Active Conda Environment Name: {env_name}")
 
-from numpy.core.numeric import Infinity
+
+from copy import deepcopy
+#from numpy.core.numeric import Infinity
 from pyomo.common.timing import report_timing
 from pyomo.scripting.interface import pyomo_callback
 from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
-from sympy import false
+#from sympy import false
 from gurobipy import GRB
 #from rbptest import alpha
 from sos2 import sos2, convex_pw_knapsack_dp, sos2_gurobi
@@ -19,7 +24,7 @@ from numba import jit
 from functools import partial
 ##########################################################################
 VALIDINEQ2 = False    # inequalities added dynamically
-VALIDINEQ = True #True   # m inequalities added in init
+VALIDINEQ = True #True #True   # m inequalities added in init
 SYMBREAK = True #True #True      # symmetry breaking by ordering bins
 ITEMSYMBREAK = False #True #True         # symmetry breaking by ordering equal sized bins (currently looks only at nominal size, assuming proportional deviation)
 BRANCH_AND_CUT = False #True #True
@@ -28,44 +33,53 @@ NO_VAR_GEN = False
 SOS_SOLVE = False
 MIP_START_OR_HINT = 2 # 2- hint, 1- Start, 0 - none
 ############################################################
-VIOL_TOL = 1e-4
-INT_TOL = 1e-2
+VIOL_TOL = 1e-3
+INT_TOL = 1e-1
 GAPVAL1 = 0.2 #0.05 #4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.01 #0.05 # final optimality gap
+GAPVAL2 = 0.01 #0.01 #0.05 # final optimality gap
 TIME_LIMIT = 7200
 MAX_CUTS = math.inf
 #################################
 DEBUG_CB = False
 DEBUG_CB_0 = False
 DEBUG_CB_2 = False
-GUROBI_OUTPUT = True
+GUROBI_OUTPUT = False
 DEBUG_INEQ_NOVAR = False
-
 BOUND_OVERFILL = math.inf  # 2*BINSIZE
-
+EPS = 1e-6
 #import os
 #"../data/testinstance.csv"
 #os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
 # "../data/testinstance.csv" #
 
-FILENAME = "../data/testinstance.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_032Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V04.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_012Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv" #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-    #"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
-#"../data/Dep13300with_a_ahat_test_withlabel.csv"
+FILENAME = (# "../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V06.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V06.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv")
+# #"../data/testinstance.csv"
+#"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_012Patients.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_032Patients.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V04.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V08.csv")
+#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
+"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv")
+#".."../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
+#"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+#"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
+#"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
 #gapVal = 0.1
 
+Omega_val = 971 #0#971#1195#721#477#283#0 #283#477 #283#971#1195#721#1195 #0#1195 #477 #721 #971 #477 #1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240
+BINSIZE = 540#600 #540 #480 #540 #2  # 540
 
 __DEBUG = False
 __DEBUG_0 = False
 __DEBUG_2 = False
 __DEBUG_3 = False
-
 #3600
 
-import os  # change current path to the file's directory
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
@@ -189,6 +203,7 @@ def add_cut(mdl,a_bar,a):
 
 
 def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
+    
     """
     used to recieve new model and alph
     """
@@ -201,9 +216,10 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
         add_cut(mdl,a_bar,a)
     else:
         for j in mdl.J:
-        ##mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha_bar[j] + mdl.alpha[j, scenario_num])
-            mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
-        mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
+            cons = mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
+            #opt.add_constraint(cons)
+        con = mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
+        #opt.add_constraint(con)
     return mdl, mdl.alpha
 
 #@jit(nopython=False)
@@ -216,7 +232,7 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     a = [0] * n
     p_star = None
     items = []
-    i_max = None
+    i_max = -1 #None
     # if we use the scip version
 
     m,nn = p.shape # n = rows // m = columns
@@ -234,16 +250,17 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
             print(p, b)
             raise ValueError("nonconvex b")
         if p[i, 0] > INT_TOL:  #and not sos:
-            pp[i, 0] = 0
-            pp[i, 1] = 0
-            pp[i,2] -= p[i,0]
+            pp[i,2] = max(pp[i,2]-p[i,0],0)
+            pp[i,0] = 0
+            pp[i,1] = 0
             constant += p[i,0]
+
             #itemsConstant.add(i)  not needed
     if sos:
         if __DEBUG_3:
             p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, False)  # true
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
-        p_star, items, i_max, _, _ = sos2_gurobi(pp, bb, Omega)
+        _star, items, i_max, _, _ = sos2_gurobi(pp, bb, Omega)
         if __DEBUG_0:
             print("p_star sos = ", p_star, " items=", items, " i_max=", i_max)
 
@@ -262,12 +279,12 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     if remDev < 0:
         print ("Error", Omega, remDev, items, i_max)
         raise ValueError
-    if i_max is not None:
+    if i_max is not -1: #None:
         for i in range(n):
             if z[i,i_max] >= 1 - INT_TOL:
                 a[i] = min(a_hat[i],remDev)
                 remDev -= a[i]
-    if p_star > 0 and remDev > 0:
+    if p_star > 0 and remDev > INT_TOL:
         if __DEBUG_2 or __DEBUG_3:
             p_star_2 = []
             items_2 = []
@@ -276,15 +293,16 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
                 p_star_2, items_2, i_max_2, _, _ = sos2_gurobi(pp, bb, Omega)
             else:
                 p_star_2 = p_star_k
-                items_2 = items_k
-                i_max_2 = i_max_k
+                #items_2 = items_k
+                #i_max_2 = i_max_k
             #print ("items=",items, " i_max=", i_max, " remDev=", remDev, " sumU=", sum(b[i,2] for i in range(m)), " sum b[:,1]=", sum(b[i,1] for i in range(m)),
             #       " Omega=", Omega, " p_star=", p_star, " p_star_2=", p_star_2, " constant=", constant, " items_2", items_2, " i_max_2=", i_max_2)
             if (not sos and abs(p_star_2 - (p_star+constant)) > 1e-3) or (sos and p_star_k and abs(p_star_2- p_star) > 1e-3):
                 #print("p_star sos = ", p_star, " items=", items, " i_max=", i_max, " p_star_2=", p_star_2, " i_max_2=", i_max_2, " items_2=", items_2, " constant=", constant)
                 print(p, b)
                 raise ValueError("error in conv knapsack")
-            #raise ValueError("remDev>0")
+
+        #raise ValueError("remDev>0 "+str(remDev) +" " +str(i_max))
     return p_star+constant, a, constant
 
 #model = pe.ConcreteModel()
@@ -414,13 +432,13 @@ def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
                         ZZ[i, j] = 1
                     f[j] += a_bar[i]
                     u[j] += a_hat[i]
-            b[j, 1] = max(min(V - f[j], min(BOUND_OVERFILL, u[j])) ,0)  # for mid breakpoint - min of unfilled capacity and u, positive part
+            b[j, 1] = min(max(V-f[j],0), min(BOUND_OVERFILL, u[j]))  # for mid breakpoint - min of unfilled capacity and u, positive part
             b[j, 2] = min(BOUND_OVERFILL, u[j])  ## testing with bounds on u which applies with equal c's           # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
             p[j, 0] = c[j] * max(f[j] - V, 0)
-            p[j, 1] = c[j] * max(f[j] - V, 0)
+            p[j, 1] = c[j] * max(f[j] - V, 0)  # 0 if started neg
             # p[j,2] = c[j] * max(u[j] - V + f[j], 0)
             p[j, 2] = c[j] * (b[j, 2] - b[j, 1] + max(f[j] - V, 0))
-            if abs(p[j, 2]) <= 1e-3:  # if b[j,1]=u[j] < f[j] - V
+            if abs(p[j, 2]) <= EPS:  # if b[j,1]=u[j] < f[j] - V
                 b[j, 1] = 0
                 b[j, 2] = 0
             assert p[j, 2] >= p[j, 1]
@@ -447,7 +465,7 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
         opt.options['LazyConstraints'] = 1
         #opt.options['PreCrush'] = 1
         opt.options['Presolve'] = 2
-        opt.options['DisplayInterval'] = 300
+        opt.options['DisplayInterval'] = 5000
         opt.set_callback(my_callback)
 
     gapVal = GAPVAL1
@@ -462,11 +480,11 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
     z_old = []
     #model_old = []
     while True:
+        opt.set_instance(model)
         opt.options["MIPGap"] = gapVal
         opt.options['TimeLimit'] = int(float(timelimit)-(time.time()-start))
         masterStart = time.time()
         #opt.update()
-        opt.set_instance(model)
         #gModel = opt._solver_model
         #gModel.setParam('OutputFlag', 0)
         # Set up callback function with required arguments
@@ -519,17 +537,17 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
             for k in model.z.keys():
                 if abs(model.z[k].value) > 1e-2:
                     print(model.z[k].getname(), model.z[k].value, end=' ')
-            print('')
+            print('***')
             print(z_old)
-
             model_old.scuts.pprint()
-            model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)   ## for debugging
+            #model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)   ## for debugging
+            print('***')            
             model.scuts.pprint()
             raise Exception("breaking..")
 
         p_star_old = p_star
         a_old = a
-        #model_old = deepcopy(model)
+        model_old = deepcopy(model)
         z_old = []
         for k in model.z.keys():
             if abs(model.z[k].value) > 1e-2:
@@ -566,13 +584,12 @@ def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
 if __name__ == "__main__":
     # example problem
 
-    Omega = 4  # 1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240 # also B
+    Omega = Omega_val # also B
     # 4
-    MAX_BINS = 20
-    MAX_SCENRIOS = 1e4
-    BINSIZE = 2  # 540
+    MAX_BINS = 5 #20
+    MAX_SCENRIOS = 1e3
     # 2
-    OT_cost = 0.6  # 1.3/BINSIZE #0.0021 #0.003
+    OT_cost = 4/BINSIZE #0.6  # 1.3/BINSIZE #0.0021 #0.003
     # 0.6
     #
 
@@ -598,184 +615,4 @@ if __name__ == "__main__":
     print(" time limit: ", timeL, "run time: ", runTime, " master runtime: ", masterTime, " num of bins: ", numBins, " theta*: ", thetastar, " obj=", obj, " num of scenarios: ", scenario_num, " cuts added:", cuts_added)
     #error("quit")
     print(assign)
-    assign.to_csv(FILENAME + "_schedule.csv")
-
-"""    m = len(c)
-    n = len(a_bar)
-    alpha = {}
-    scenario_num = 0
-    #model, theta, y, f_bar, z = rebppinit(a_bar,a_hat,V,c)
-    model = rebppinit_pyomo(a_bar,a_hat,V,c)
-    theta = model.theta
-    #model.hideOutput()
-    it = 0
-    opt = pe.SolverFactory('gurobi_direct')
-    p_star_old = 0
-    a_old = []
-    z_old = []
-
-    while True:
-        f = {}
-        u = {}
-        #model.optimize()
-        opt.options["MIPGap"] = gapVal
-        results = opt.solve(model, tee=False)
-
-        #print_sol(model)
-        #model.writeProblem("model" + str(iter) + ".cip",trans=False)
-        # model = model2
-        b = np.zeros((m, 3), int)  #empty((0,3), int)
-        p = np.zeros((m, 3), float)  #empty((0,3), int)
-#        if model.getStatus() != "optimal":
-        status = results.Solver.status  # results.Solver()['Termination condition'].value
-        if status != SolverStatus.ok:  # TerminationCondition.optimal: #'optimal':
-            print("Error (suboptimal)")
-            raise ValueError
-
-        for j in range(m):
-            if model.getVal(model.y[j]) > 1 - INT_TOL:
-                f[j] = 0
-                u[j] = 0
-#                numBins += 1
-                for i in range(n):
-                    # print("loop problem")
-                    if model.getVal(model.z[i, j]) > 1 - INT_TOL:
-                        f[j] += a_bar[i]
-                        u[j] += a_hat[i]
-                b[j, 1] = max(min(V - f[j], u[j]), 0)
-                b[j, 2] = u[j]  # ,axis=0) #max(u[j] - V + f[j], 0)]]), axis=0)
-                p[j, 0] = c[j] * max(f[j] - V, 0)
-                p[j, 1] = p[j, 0]
-                p[j, 2] = c[j] * (b[j, 2] - b[j, 1] + max(f[j] - V, 0))
-                assert p[j,2] >= p[j,1]
-                assert p[j,1] >= p[j,0]
-#            f[j] = 0
-#            u[j] = 0
-#            for i in range(n):
-#                if model.getVal(z[i,j]) > 1 - INT_TOL:
-#                    f[j] += a_bar[i]
-#                    u[j] += a_hat[i]
-#            b = np.append(b, np.array([[0, min(max(V-f[j],0),u[j]),u[j]]]),axis=0)
-#                                        #max(u[j]-V+f[j],0)]]), axis=0)   # 29/3 - added u[j] truncation in 2nd breakpoint
-#            p = np.append(p, np.array([[c[j]*max(f[j]-V,0), c[j]*max(f[j]-V,0), c[j]*max(u[j]-V+f[j],0)]]), axis=0)
-        #print(b)
-        #print(p)
-        theta_star = model.getVal(theta)
-        #print(model.z.extract_values())
-
-        p_star,a = convex_pw_knapsack_wrapper(p,b,Omega,model.z,a_hat,model,False)
-        it += 1
-        print("iteration: ", it, " p_star val: ", p_star, " theta_star_val: ",theta_star)
-        # p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z.extract_values(), a_hat, model, True)
-
-        p_star_0, a_0 = convex_pw_knapsack_wrapper(p, b, Omega, model.z, a_hat, model, True)  # False)
-
-        if p_star_0 != p_star or (p_star == p_star_old and a == a_old and p_star > theta_star + VIOL_TOL):
-            print("got same subprob p_star=", p_star, " p_star_old", p_star_old, p_star_0)
-            print(a)
-            print(a_old)
-            # print(a_0)
-            print(p)
-            assert p[0,1]>=p[0,0]
-            print(b)
-            # print(p_old)
-            # print(b_old)
-            print(Omega)
-            for k in model.z.keys():
-                if abs(model.z[k].value) > 1e-2:
-                    print(model.z[k].getname(), model.z[k].value, end=' ')
-            print('')
-            print(z_old)
-            raise Exception("breaking..")
-
-        p_star_old = p_star
-        a_old = a
-        z_old = model.z.extract_values()
-        if p_star <= theta_star + VIOL_TOL:
-            print_sol(model)
-            break
-        #model,alpha = update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num)
-        model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a,scenario_num)
-        scenario_num += 1
-        # model.writeLP("after_update_model.lp")
-        # def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar,z):
-"""
-
-"""
-#first fit decreasing heuristic for robust bin packing with omega-uncertainty
-def FFD_RBPP(a_bar, a_hat, V, Omega_in):
-    nominal_fill = [0]
-    deviation_fill = [0]
-    sol = [[]]
-    a_bar_array = np.array(a_bar)
-    a_hat_array = np.array(a_hat)
-    ratios = np.divide(a_hat_array,a_bar_array)
-    indexes = np.argsort(ratios)
-    reversed_indexes = np.flip(indexes)
-
-    for index in reversed_indexes:
-        for j in range(len(nominal_fill)):
-            if nominal_fill[j] + min(Omega_in, deviation_fill[j] + a_hat[index]) + a_bar[index] <= V:
-                nominal_fill[j] += a_bar[index]
-                deviation_fill[j] += min(a_hat[index], Omega_in - deviation_fill[j])
-                sol[j].append(index)
-                break
-            else:
-                sol.append([index])
-                nominal_fill.append(a_bar[index])
-                deviation_fill.append(min(a_hat[index], Omega_in))
-    return sol
-U = {}
-"""
-
-"""
-def update_rebpp(model, a_bar, V, c, a, theta, y, z, alpha, scenario_num):
-    #used to recieve new model and alph
-    m = len(y)
-    n = len(a_bar)
-    model.freeTransform()
-    if __DEBUG_2:
-        print("scenario_num: ", scenario_num)
-    for j in range(m):
-        alpha[j, scenario_num] = model.addVar(vtype="C", name="alpha(%s,%s)" % (j, scenario_num))
-        model.addCons(quicksum(z[i, j] * (a_bar[i] + a[i]) for i in range(n)) <= V * y[j] + alpha[j, scenario_num])
-
-    model.addCons(quicksum(c[j] * alpha[j, scenario_num] for j in range(m)) <= theta)
-
-    return model, alpha
-    
-"""
-
-
-"""
-# robust extensible bin packing problem model init
-def rebppinit(a_bar, a_hat, V, c):
-    model = Model("rebpp")
-    m = len(c)
-    n = len(a_bar)
-
-    y, alpha_bar, z = {}, {}, {}
-    theta = model.addVar(vtype="C", name="theta")
-
-    # initialize variables
-    for j in range(m):
-        y[j] = model.addVar(vtype="B", name="y(%s)" % j)
-        alpha_bar[j] = model.addVar(vtype="C", name="alpha_bar(%s)" % j)
-        for i in range(n):
-            z[i, j] = model.addVar(vtype="B", name="z(%s,%s)" % (i, j))
-
-    # initialize constraints
-    for i in range(n):
-        model.addCons(quicksum(z[i, j] for j in range(m)) == 1, "Assign(%s)" % i)  # constraint 1b
-        for j in range(m):
-            model.addCons(z[i, j] <= y[j], "Strong(%s,%s)" % (i, j))  # constraint 1c
-
-    for j in range(m):
-        model.addCons(
-            quicksum(a_bar[i] * z[i, j] for i in range(n)) <= alpha_bar[j] + y[j] * V)  # moved y[j] * V to other side
-
-    model.addCons(quicksum(c[j] * alpha_bar[j] for j in range(m)) <= theta)
-    model.setObjective(quicksum(y[j] for j in range(m)) + theta, "minimize")
-    # model.writeLP("initial_model.lp")
-    return model, theta, y, alpha_bar, z
-"""
+    assign.to_csv(FILENAME + "_schedule_" + str(V) + "_" + str(Omega) + ".csv")

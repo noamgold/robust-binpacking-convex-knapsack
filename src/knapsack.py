@@ -6,6 +6,7 @@ import random
 import time
 import numpy as np
 import math
+import sys
 np.random.seed(0)
 W = 8
 w = [1,2,6, 2]
@@ -129,17 +130,6 @@ def f(P,k,w,p):
         if k >= 2:
             return min(f(P,new_k,w,p), f(P-p[k-1], new_k, w,p) + w[k-1])
         
-def p_opt_trial(P_bar,k,w,p,W):
-    fin = []
-    # print("hello")
-    # print("P_Bar val: ", P_bar)
-    for P in range(P_bar+1):
-        print(P,":", f(P,k,w,p))
-        if f(P,k,w,p) <= W:
-            fin.append(P)
-    # print("P=2835: ", f(2835,k,w,p))
-    # print(W)
-    return fin[-1]
     
 def p_opt(P,k,w,p,W):
     l = 1
@@ -166,19 +156,6 @@ def p_opt(P,k,w,p,W):
     #     print("r: ",r)
     # print("P=1318: ", f(1318,k,w,p))
     return l
-
-def g(p,w,W,k):
-    if k == 0 and W < w[0] and 0 <= W:
-        return 0
-    if W < 0:
-        return -1 * float('inf')
-    if W >= w[0] and k == 1:
-        return p[0]
-    else:
-        new_k = k-1
-        if k>=1 and W<w[k-1]:
-            return g(p,w,W,new_k)
-        return max(g(p,w,W,new_k), g(p, w, W-w[k-1],new_k)+p[k-1])
     
 def knapsack(w,p,W):
 
@@ -201,50 +178,36 @@ def knapsack(w,p,W):
         # print("objects: ", fin)
     return knapsack.getObjVal()
 
-def P_upper_bound_real(w,p,W):
+# compute upper bound based on relaxation and optional decreasing ratio ordering
+@jit(nopython=True)
+def P_upper_bound(w,p,W,indexes = []):
     curr_total_weight = 0
     p_bar = 0
-    w_array = np.array(w)
-    p_array = np.array(p)
-    ratios = np.divide(p_array,w_array)
-    indexes = np.argsort(ratios)
-    reversed_indexes = np.flip(indexes)
-    for index in reversed_indexes:
+    n = len(p)
+    w_array = w #np.array(w)
+    p_array = p #np.array(p)
+    
+    #assert(ratios[0] >= ratios[1] and ratios[1] >= ratios[n-1])
+    if len(indexes) < n:
+        ratios = np.divide(p_array,w_array)
+        indexes = np.argsort(ratios)
+        reversed_indexes = np.flip(indexes)
+        indexes = reversed_indexes
+    for index in indexes: #reversed_indexes:
         weight = w_array[index]
         profit = p_array[index]
         # if W - curr_total_weight > 0:
         if curr_total_weight + weight < W:
-            curr_total_weight += weight
-            p_bar += profit
+            if profit > 0:
+                curr_total_weight += weight
+                p_bar += profit
         else:
             fraction = (W - curr_total_weight)/weight
             p_bar += profit * fraction
-            return math.ceil(p_bar)
+            return int(math.floor(p_bar))
+    return int(math.floor(p_bar))
 
-def P_upper_bound(w,p,W):
-    """
-    function to get a higher p_upper bound rather than just the sum
-    """
-    curr_total_weight = 0
-    p_bar = 0
-    w_to_p = {}
-    ratios = {}
-    for i in range(len(w)):
-        w_to_p[w[i]] = p[i]
-        ratios[(p[i]/w[i])] = w[i]
-    sorted_bfb = dict(reversed(sorted(ratios.items()))) #orderes items in which they give the most bang for your buck
-    for best in sorted_bfb:
-        weight = sorted_bfb[best]
-        if W - curr_total_weight > 0:
-            if curr_total_weight + weight < W:
-                curr_total_weight += weight
-                p_bar += w_to_p[weight]
-            else:
-                fraction = (W - curr_total_weight)/weight
-                p_bar += w_to_p[weight] * fraction
-                return p_bar
-        else:
-            return p_bar
+
 
 @jit(nopython=True)
 def for_loop_method_all_w_save_all(p,w,W,B_all):
@@ -262,6 +225,23 @@ def for_loop_method_all_w_save_all(p,w,W,B_all):
                     if B_all[k-1,weight - w[k]] + p[k] > B_all[k-1,weight]:
                         B_all[k,weight] = B_all[k-1,weight - w[k]] + p[k]
 
+@jit(nopython=True)
+def for_loop_method_all_p_save_all(p,w,Pmax,B_all):
+    n = len(p)
+    #B_all = np.zeros((W+1,n),dtype=float)
+    B_all[0,0]=0
+    for k in range(n):
+        if k >= 1:
+            #np.copyto(B_all[k,:],B_all[k-1,:])
+            B_all[k, :] = B_all[k-1,:].copy()
+        if p[k] > 0:
+            if k==0:      
+                #for profit in range(1,p[k]+1):
+                B_all[0,p[0]] = w[0]
+            else:
+                for profit in range(p[k],Pmax+1):
+                    if B_all[k-1,profit - p[k]] < sys.maxsize and B_all[k-1,profit - p[k]] + w[k] < B_all[k-1,profit]:
+                        B_all[k,profit] = B_all[k-1, profit - p[k]] + w[k]
 
 # vector implementation of DP - cost version
 # save B and items after item i in addition to final ones, start from i_skip + 1 and save at
@@ -280,10 +260,8 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
     if np.min(w) <= W:
         if len(B_in) > 0 and i_skip >= 0:
            B = B_in.copy()
-           #print("copied B")
-           #items = items_in.copy()
-        else:
-          i_skip = -1
+        #else:
+        #  i_skip = -1
         i_max = n
         if sorted_two_piece:
             i_max = i_skip+2
@@ -300,9 +278,6 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
             #if save_all:
             #    B_all[:,i] = B.copy()
             #    items_all[i] = items.copy()
-    #if not np.any(B):
-    #    raise Exception("zero B at the end of knapsack DP")
-
     return B, items#, B_all, items_all
 
 #@jit(nopython=True)
@@ -312,7 +287,7 @@ def for_loop_method_all_w(p,w,W, B_in = np.array([]), i_skip = int(-1), return_i
 
 def generate_random_instance(k_random, R, inversely_cor=True):
     b_random = np.zeros(k_random, dtype=int)
-    p_random = np.zeros(k_random, dtype=float)
+    p_random = np.zeros(k_random, dtype=int)
     if inversely_cor:
         p_random = np.random.rand(k_random)*R
         p_random = np.ceil(p_random) #np.array(np.ceil(p_random), dtype='i')
@@ -322,19 +297,41 @@ def generate_random_instance(k_random, R, inversely_cor=True):
         d = 6
         k1 = 3*R/10
         k2 = 2*R/10
-        #b_random = 1+np.random.rand(k_random) * (R-1)
-        #b_random = np.ceil(b_random).astype(int)
-        #b_div_6 = b_random.astype(int)%d
-        #b_div_6[b_div_6 > 0] = -1
-        #b_div_6[b_div_6==0] = 1
-        #b_div_6[b_div_6 == -1] = 0
-        #p_random = b_random + k2
-        #p_random[b_div_6] = b_random[b_div_6] +k1
         b_random = np.random.rand(k_random)*(R-1)
         b_random = 1+(np.ceil(b_random)).astype(int)
         for j in range(k_random):
             p_random[j] = random.randint(math.floor(b_random[j]+R/10-R/500),math.ceil(b_random[j]+R/10+R/500))
     return p_random,b_random
+
+@jit(nopython=True)
+def for_loop_method_all_p(p,w,P,B_in = np.array([],dtype=np.int64), i_skip = int(-1), return_items = True, sorted_two_piece = False):
+    n = len(p)
+    B = np.full(P+1,sys.maxsize) #np.iinfo(np.int64).max) #[0] * (W + 1)
+    items = [[i for i in range(0)] for _ in range(P+1)]
+    #B = [float('inf')] * (P + 1)
+    if len(B_in) > 0 and i_skip >= 0:
+        B = B_in.copy()
+    i_max = n
+    if sorted_two_piece:
+        i_max = i_skip+2
+    B[0] = int(0)
+    for k in range(i_skip+1,i_max):
+        #k in range(n):
+        if p[k]==0:
+            continue
+        A = B.copy()
+        items_tmp = items.copy()
+
+        for profit in range(p[k], P + 1):
+            if A[profit - p[k]] < sys.maxsize and A[profit - p[k]] + w[k] < A[profit]:
+                B[profit] = A[profit - p[k]] + w[k]
+                if return_items:
+                    items[profit] = items_tmp[profit-p[k]] + [k]
+    #for p in range(P+1):
+    #    if B[p] <= W:
+    #        max_p = p
+
+    return B, items #max_p
 
 
 def for_loop_method_profit(P,p,w,W):
@@ -354,6 +351,8 @@ def for_loop_method_profit(P,p,w,W):
             max_p = p
 
     return max_p
+
+
 
 if __name__ == "__main__":
 
@@ -398,7 +397,7 @@ if __name__ == "__main__":
         
 
         W_random = int(20/101 * sum(w_random))
-        P_max = P_upper_bound_real(w_random, p_random, W_random)
+        P_max = P_upper_bound(w_random, p_random, W_random)
         bounds.append(P_max)
 
 
