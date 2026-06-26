@@ -279,7 +279,7 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
     if remDev < 0:
         print ("Error", Omega, remDev, items, i_max)
         raise ValueError
-    if i_max is not -1: #None:
+    if i_max != -1: #None:
         for i in range(n):
             if z[i,i_max] >= 1 - INT_TOL:
                 a[i] = min(a_hat[i],remDev)

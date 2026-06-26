@@ -330,7 +330,7 @@ def convex_pw_knapsack_dp_profit(p, b, W, y_intercept_nonzero=False):
         print("convex_pw_knapsack_dp i_max=", i_max)
     p_vec = profit_array.copy()
     b_vec = b_array.copy()
-    if i_max is not -1: #None:
+    if i_max != -1: #None:
         p_vec[int(i_max)] = 0
         b_vec[int(i_max)] = W+1
     _, items_max = for_loop_method_all_p(p_vec, b_vec, p_max) #, B, -1, True)  # items_all[i-1], skip_idx)
