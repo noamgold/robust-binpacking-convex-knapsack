@@ -31,12 +31,16 @@ import math
 import random
 import pandas as pd
 
+# Keep quicksum-based debug print lines compatible with the historical main block.
+quicksum = np.sum
+
 from knapsack import (
     for_loop_method_all_w,
     for_loop_method_all_p,
     for_loop_method_all_w_save_all,
     for_loop_method_all_p_save_all,
     P_upper_bound,
+    generate_random_instance,
 )
 
 __DEBUG_2 = False
@@ -400,41 +404,91 @@ def write_instance(p_random, b_random, i):
 
 if __name__ == "__main__":
     random.seed(101)
+    for k_random in [50,100,250,500]: #, 250]: #[50, 100, 150, 200, 250, 300# ]:
+        for R in [100,1000,10000]:
+#    for R in [1000]: #[1000,10000]:
+#        for k_random in [50,100,250,500]: #, 250]: #[50, 100, 150, 200, 250, 300]:
+            #sos2_time_process = []
+            #sos2_time_elapsed = []
+            sos2g_time_process = []
+            sos2g_time_elapsed = []
+            sos2g_time_elapsed_wotl = []  # excluding time limits
+            convex_time_process = []
+            convex_time_elapsed = []
+            fin_sos2 = []
+            fin_sos2g = []
+            fin_convex = []
 
-    p = np.array(
-        [
-            [0.0, 10.0, 18.0],
-            [0.0, 14.0, 23.0],
-            [0.0, 12.0, 19.0],
-        ],
-        dtype=float,
-    )
-    b = np.array(
-        [
-            [0.0, 4.0, 9.0],
-            [0.0, 6.0, 12.0],
-            [0.0, 5.0, 10.0],
-        ],
-        dtype=float,
-    )
+            for i in range(1,31):
+    #for i in range(1, 9):
+                b = np.empty((0,3), int) #np.int64)
+                p = np.empty((0,3), int) #np.int64)
+                p_random,b_random = generate_random_instance(k_random,R,True)
+                write_instance(p_random,b_random,i)
+                #b_random, p_random  = read_instance(i)
+                k_random = len(b_random)
 
-    # Use math just to keep a deterministic, readable capacity expression.
-    B = int(math.ceil(0.6 * np.sum(b[:, -1])))
-    obj, items, i_max, elapsed, cpu = sos2_gurobi(p, b, B)
+                for p_val in p_random:
+                    #p = np.append(p, np.array([[0, 0, p_val+1e-3*random.random()]]), axis=0)
+                    p = np.append(p, np.array([[0, 0, p_val]]), axis=0)
 
-    print("[sos2] demo instance")
-    print("capacity:", B)
-    print("objective:", obj)
-    print("selected full items:", items)
-    print("fractional pivot item i_max:", i_max)
-    print("elapsed seconds:", elapsed, "cpu seconds:", cpu)
+                for b_val in b_random:
+                    #b = np.append(b, np.array([[0, random.randint(0,b_val), b_val]]), axis = 0)
+                    b = np.append(b, np.array([[0, b_val-1, b_val]]), axis = 0)
 
-    # Optional quick DP cross-check against the profit-state approximation path.
-    dp_obj, dp_items, dp_imax = convex_pw_knapsack_dp_profit(p, b, B)
-    print("dp objective:", dp_obj)
-    print("dp items:", dp_items)
-    print("dp i_max:", dp_imax)
+                        #print(for_loop_method_all_w(p, b, 63,-1,[i for i in range(1)], [[i for i in range(1)] for _ in range(1)], -1))
+                W = int(math.ceil((5+i*3)/101 * sum(b_random)))
+
+                #p, b = sort_instance_by_slopes(p, b)  # sort instance for linear speed up
+
+                #(sos2_val, sos_items, sos_imax, solve_time, cpu_time) = 0, 0, 0 , 0, 0
+                        #(sos2_val,sos_items,sos_imax, solve_time, cpu_time) = sos2(p,b,W)
+                #if __DEBUG_2:
+                #    print("sos2 objVal=", sos2_val)
+                #sos2_time_process.append(cpu_time)
+                #sos2_time_elapsed.append(solve_time)
+
+        ##################################
+                (sos2g_val,sosg_items,sosg_imax, solve_time, cpu_time) = sos2_gurobi(p,b,W)
+                if __DEBUG_2:
+                    print("sos2 gurobi objVal=", sos2g_val, " sosg_imax=", sosg_imax)
+                    print(sosg_items)
+                sos2g_time_process.append(cpu_time)
+                sos2g_time_elapsed.append(solve_time)
+                if solve_time <= TIMELIMIT-1:
+                    sos2g_time_elapsed_wotl.append(solve_time)
+                print("i=", i, " sos time: ", solve_time)
+                sos2_val = sos2g_val
+        ##################################
+
+                convex_start_process = time.process_time()
+                convex_start_elapsed = time.time()
+                convex_val,items,imax = convex_pw_knapsack_dp_profit(p,b,W)
+                #convex_val,items,imax = convex_pw_knapsack_dp(p,b,W)
+                convex_end_process = time.process_time()
+                convex_end_elapsed = time.time()
+                convex_time_process.append(convex_end_process - convex_start_process)
+                convex_time_elapsed.append(convex_end_elapsed - convex_start_elapsed)
+                print("i=", i, " DP time: ", convex_end_elapsed - convex_start_elapsed)
 
 
-if __name__ == "__main__":
-    main()
+                if abs(sos2g_val-convex_val)/sos2g_val > 1e-4 and int(sos2g_time_elapsed[-1]) < 1800:
+                    print("ERR ! ................  sos2g objval: ", sos2g_val, " DP val: ", convex_val)
+                    print("W=", W, " sosg_imax=", sosg_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sosg_items)
+                    print("")
+                    raise Exception("different obj vals")
+
+                fin_sos2.append(sos2_val)
+                fin_sos2g.append(sos2g_val)
+                fin_convex.append(convex_val)
+
+          #  print(k_random, " & ", f"{sum(sos2_time_process)/float(len(fin_sos2)):.2f}", " & ",  f"{max(sos2_time_process):.2f}" , " & ",  f"{sum(convex_time_process)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
+          #  print(k_random, " & ", f"{sum(sos2_time_elapsed)/float(len(fin_sos2)):.2f}", " & ", f"{max(sos2_time_elapsed):.2f}" , " & ", len([x for x in sos2_time_elapsed if x>TIMELIMIT-1]), " & ",  f"{sum(convex_time_elapsed)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x>TIMELIMIT-1]) )
+
+            print(k_random, " & ", f"{sum(sos2g_time_process) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_process):.2f}", " & ", f"{sum(convex_time_process) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
+            print(k_random, " & ", f"{sum(sos2g_time_elapsed) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT-1]), " & ",f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT-1]))
+            print(k_random," & ", R, " & ", f"{np.mean(sos2g_time_elapsed_wotl):.2f}", " & ", f"{max(sos2g_time_elapsed_wotl):.2f}", " & ", f"{np.mean(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT - 1]), " & ", f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT - 1]))
+         
+            combined_data = np.column_stack((sos2g_time_elapsed,convex_time_elapsed))
+            np.savetxt('times_' + str(k_random) + "_" + str(R) + ".csv",combined_data,delimiter=',',fmt='%10.2f',header='GurobiTime,DPTime')
+# print(p_eval(b,p,6,2))

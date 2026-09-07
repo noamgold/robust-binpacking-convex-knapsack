@@ -318,7 +318,6 @@ if __name__ == "__main__":
     and can also be used to track run times for the f method vs g method (profit vs weight)
     """
 
-    # Benchmark harness kept for compatibility with existing local workflows.
     st = time.time()
 
     fin_g = []
@@ -335,7 +334,6 @@ if __name__ == "__main__":
     for_time_elapsed = []
     bounds = []
 
-    # Repeat randomized experiments to average runtime noise.
     for i in range(10): # number of trials to average out on
         print(i) # to see what iteration it's on
         R = 100
@@ -356,14 +354,12 @@ if __name__ == "__main__":
         
 
         W_random = int(20/101 * sum(w_random))
-        # Fast relaxation bound used for diagnostics and optional downstream limits.
         P_max = P_upper_bound(w_random, p_random, W_random)
         bounds.append(P_max)
 
 
         knap_start_process = time.process_time()
         knap_start_elapsed = time.time()
-        # DP-based compatibility solver (replaces old pyscipopt implementation).
         knap_star = knapsack(w_random, p_random, W_random)
         knap_stop_process = time.process_time()
         knap_stop_elapsed = time.time()
@@ -392,7 +388,6 @@ if __name__ == "__main__":
 
         for_start_process = time.process_time()
         for_start_elapsed = time.time()
-        # Direct DP call kept for side-by-side timing with the compatibility wrapper.
         for_star = for_loop_method_all_w(np.array(p_random), np.array(w_random), W_random, np.array([],dtype=float), #[List().append(-1) for _ in range(1)],
                                          int(-1))
         for_stop_process = time.process_time()
@@ -415,7 +410,6 @@ if __name__ == "__main__":
     print(fin_for)
     print("Bounds: ", bounds)
 
-    # Final aggregate summary for quick regression checks.
     print("The average processing time for knap and the for loop method respectively are: ", sum(knap_time_process)/float(len(fin_knap)), sum(for_time_process)/float(len(fin_for)))
     print("The average elapsed time for knap and the for loop method respectively are: ", sum(knap_time_elapsed)/float(len(fin_knap)), sum(for_time_elapsed)/float(len(fin_for)))
     # print("The average processing time for f, g, and knap respectively are: ",sum(f_time_process)/float(len(fin_f)), sum(g_time_process)/float(len(fin_g)), sum(knap_time_process)/float(len(fin_knap)))
