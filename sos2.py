@@ -398,10 +398,7 @@ def write_instance(p_random, b_random, i):
     fileName = "data" + str(len(b_random)) + "_" + str(len(p_random)) + "_" + str(i) + ".txt"
     df.to_csv(fileName)
 
-
-def main():
-    """Small executable demo kept intentionally for local validation and learning."""
-    # Lightweight deterministic demo for quick smoke tests and learning.
+if __name__ == "__main__":
     random.seed(101)
 
     p = np.array(
