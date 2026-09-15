@@ -40,8 +40,23 @@ V_mult = 1/8
 
 
 
-def read_instance(i,sz,ss):
-    """Load benchmark instance ``i`` for size ``sz`` and return ``a_bar``."""
+def read_instance(i: int, sz: int, ss: int) -> np.ndarray:
+    r"""Load one Song et al. benchmark instance.
+
+    Parameters
+    ----------
+    i : int
+        Instance identifier.
+    sz : int
+        Benchmark family size, such as 30, 60, or 90.
+    ss : int
+        Number of rows to retain.
+
+    Returns
+    -------
+    numpy.ndarray
+        Sorted nominal durations ``\bar a``.
+    """
     fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
     #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
     print("opening: ", fileName)

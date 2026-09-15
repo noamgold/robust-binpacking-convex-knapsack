@@ -37,6 +37,7 @@ import sys
 import math
 import random
 import pandas as pd
+from typing import List, Tuple
 
 # Keep quicksum-based debug print lines compatible with the historical main block.
 quicksum = np.sum
@@ -55,17 +56,36 @@ NZ_TOL = 1e-6
 TIMELIMIT = 1800
 
 
-def sos2(p, b, B):
-    """Compatibility wrapper for legacy callers.
+def sos2(p: np.ndarray, b: np.ndarray, B: int) -> Tuple[float, List[int], int, float, float]:
+    """Solve the 2PCK separation problem through the SOS2 formulation.
 
-    Keeps the old entry-point name while routing execution to the active
-    Gurobi/Pyomo implementation.
+    Parameters
+    ----------
+    p, b : numpy.ndarray
+        Breakpoint profits and weights for the convex functions
+        ``p_j(x_j) = (gamma_j + beta_j x_j)_+``.
+    B : int
+        Global uncertainty budget ``Omega``.
+
+    Returns
+    -------
+    tuple
+        Objective value ``P*``, selected full items, pivot item, elapsed wall
+        time, and elapsed CPU time.
+
+    Notes
+    -----
+    This is a compatibility entry point for the paper's SOS2 benchmark; the
+    implementation delegates to :func:`sos2_gurobi`.
     """
+
     # Preserve old API surface while delegating to the active solver path.
     return sos2_gurobi(p, b, B)
 
 
-def sos2_gurobi(p, b, B):
+def sos2_gurobi(
+    p: np.ndarray, b: np.ndarray, B: int
+) -> Tuple[float, List[int], int, float, float]:
     """Solve the SOS2 model with Gurobi through Pyomo.
 
     ``p``: profit matrix of shape ``(n, m)``.
@@ -154,8 +174,21 @@ def sos2_gurobi(p, b, B):
 
 
 @jit(nopython=True)
-def p_eval(b_row, p_row, w):
-    """Evaluate one piecewise-linear profit function at weight ``w``."""
+def p_eval(b_row: np.ndarray, p_row: np.ndarray, w: float) -> float:
+    r"""Evaluate ``p_j(x_j)`` by linear interpolation at ``x_j = w``.
+
+    Parameters
+    ----------
+    b_row, p_row : numpy.ndarray
+        Ordered breakpoints and values for one convex function.
+    w : float
+        Allocated uncertainty budget for the function.
+
+    Returns
+    -------
+    float
+        Interpolated value ``\hat p_j(w)``.
+    """
     """Evaluate a piecewise-linear function at coordinate w by interpolation."""
     # b_row: sorted x breakpoints, p_row: corresponding y values.
     b_max = b_row[-1]
@@ -180,10 +213,21 @@ def p_eval(b_row, p_row, w):
 
 
 @jit(cache=True, nopython=True)
-def sort_instance_by_slopes(p, b):
-    """Sort convex-knapsack items by non-increasing second-segment slope.
+def sort_instance_by_slopes(
+    p: np.ndarray, b: np.ndarray
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r"""Sort 2PCK functions by the slope order required by Eq. (12).
 
     This is the ordering assumed by Eq. (12) and Algorithm 2.
+    Parameters
+    ----------
+    p, b : numpy.ndarray
+        Profit and weight breakpoints for the 2PCK instance.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]
+        Sorted matrices and the permutation mapping sorted to original rows.
     """
     """Sort items by descending slope on the last piece to guide DP order."""
     # Ordering by marginal slope can improve practical DP behavior on convex instances.
@@ -195,10 +239,28 @@ def sort_instance_by_slopes(p, b):
 
 
 @jit(nopython=True)
-def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
-    """Solve the convex knapsack with a weight-indexed DP.
+def convex_pw_knapsack_dp(
+    p: np.ndarray,
+    b: np.ndarray,
+    W: int,
+    y_intercept_nonzero: bool = False,
+) -> Tuple[float, np.ndarray, int]:
+    r"""Solve 2PCK with the weight-indexed DP from Appendix A.
 
     This is the Omega-DP variant described in Appendix A, Eq. (18).
+    Parameters
+    ----------
+    p, b : numpy.ndarray
+        Three-breakpoint representation of ``\hat p_j``.
+    W : int
+        Uncertainty budget ``Omega``.
+    y_intercept_nonzero : bool, optional
+        Whether fixed intercepts should be separated from the DP objective.
+
+    Returns
+    -------
+    tuple[float, numpy.ndarray, int]
+        Optimal value, selected full-item indices, and fractional pivot index.
     """
     """DP solver for convex piecewise knapsack (capacity-based state)."""
     if __DEBUG_2:
@@ -293,11 +355,29 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
 
 
 @jit(nopython=True)
-def convex_pw_knapsack_dp_profit(p, b, W, y_intercept_nonzero=False):
-    """Solve the two-piece convex knapsack with the profit-indexed DP.
+def convex_pw_knapsack_dp_profit(
+    p: np.ndarray,
+    b: np.ndarray,
+    W: int,
+    y_intercept_nonzero: bool = False,
+) -> Tuple[float, np.ndarray, int]:
+    r"""Solve 2PCK with the profit-indexed DP of Algorithm 2.
 
     This is Algorithm 2, using the ``zeta`` tables from Eq. (10) and the
     one-fractional-item representation from Observation 2.
+    Parameters
+    ----------
+    p, b : numpy.ndarray
+        Three-breakpoint representation of ``\hat p_j``.
+    W : int
+        Uncertainty budget ``Omega``.
+    y_intercept_nonzero : bool, optional
+        Whether fixed intercepts should be separated from the DP objective.
+
+    Returns
+    -------
+    tuple[float, numpy.ndarray, int]
+        Optimal value, selected full-item indices, and fractional pivot index.
     """
     """DP solver for convex piecewise knapsack (profit-based state)."""
     if __DEBUG_2:
@@ -402,7 +482,8 @@ def convex_pw_knapsack_dp_profit(p, b, W, y_intercept_nonzero=False):
     return initialP + max_val, origIdxs[retIdxs], retImax
 
 
-def read_instance(i):
+def read_instance(i: int) -> Tuple[np.ndarray, np.ndarray]:
+    """Read one historical text instance by numeric identifier."""
     """Read a legacy benchmark instance from disk.
 
     This helper is kept for backward compatibility with the previous
@@ -413,7 +494,8 @@ def read_instance(i):
     return test_data.iloc[:, 0], test_data.iloc[:, 1]
 
 
-def write_instance(p_random, b_random, i):
+def write_instance(p_random: np.ndarray, b_random: np.ndarray, i: int) -> str:
+    """Write a generated instance and return its output filename."""
     """Write a generated instance to disk for reproducible runs.
 
     The output format matches the project's historical data layout.
@@ -422,6 +504,7 @@ def write_instance(p_random, b_random, i):
     df = pd.DataFrame(data=np.column_stack((b_random, p_random)))
     fileName = "data" + str(len(b_random)) + "_" + str(len(p_random)) + "_" + str(i) + ".txt"
     df.to_csv(fileName)
+    return fileName
 
 if __name__ == "__main__":
     random.seed(101)

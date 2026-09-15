@@ -326,3 +326,51 @@ Goldberg, N., Poss, M., and Marmor, Y. N. (2026). *Robust Extensible Bin Packing
 For the benchmark family, also cite:
 
 Song, G., Kowalczyk, D., and Leus, R. (2018). The robust machine availability problem—bin packing under uncertainty. *IISE Transactions*, 50(11), 997–1012.
+
+## 12. API and Maintenance Notes
+
+The public computational API follows a NumPy-documentation style. Every
+algorithmic entry point documents its mathematical inputs, outputs, and role
+in the paper's algorithm. Type annotations use PEP 484-compatible NumPy and
+Python types; Pyomo and Gurobi callback objects are typed as `Any` because
+their runtime interfaces are solver-specific.
+
+### Compatibility functions
+
+- `sos2.sos2` is a compatibility wrapper around `sos2_gurobi`.
+- `knapsack.knapsack` is retained for historical benchmark callers and routes
+	to the active weight-indexed DP.
+- `knapsack.for_loop_method_profit` is a legacy profit-state helper; new code
+	should use `for_loop_method_all_p`.
+
+### Experimental controls
+
+The following switches in `rebpp.py` are experiment controls rather than
+independent algorithms: `VALIDINEQ2`, `BRANCH_AND_CUT`, `NO_VAR_GEN`,
+`SOS_SOLVE`, `MIP_START_OR_HINT`, `DEBUG_CB`, `DEBUG_CB_0`, `DEBUG_CB_2`,
+`DEBUG_INEQ_NOVAR`, and `ITEMSYMBREAK`. They are retained because they define
+the paper's computational variants, but several are disabled in the default
+configuration. They should not be removed without first checking whether a
+reported experiment depends on them.
+
+The module imports `pyscipopt` for historical compatibility, but the active
+solver path uses Pyomo with Gurobi. If SCIP is no longer required by any
+external experiment, that import and dependency are candidates for cleanup.
+
+The source still contains commented historical paths and duplicate explanatory
+comments from earlier experiments. They do not affect execution, but can be
+consolidated in a future maintenance pass after the published experiments are
+fully frozen.
+
+### Static quality checks
+
+Run the following before submitting a change:
+
+```bash
+.venv/bin/python -W error -m py_compile \
+	src/knapsack.py src/sos2.py src/rebpp.py src/rbptest_grb.py
+```
+
+For a stricter academic-quality pipeline, add `ruff` for PEP 8/style checks,
+`mypy` or `pyright` for static typing, and focused numerical regression tests
+that compare the SOS2 objective with both DP variants on fixed seeds.

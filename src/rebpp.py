@@ -37,6 +37,7 @@ from pyomo.opt import SolverStatus, TerminationCondition, SolutionStatus
 import math
 import time
 from numba import jit
+from typing import Any, List, Tuple
 
 from functools import partial
 ##########################################################################
@@ -102,14 +103,22 @@ dname = os.path.dirname(abspath)
 os.chdir(dname)
 
 
-def getVal(model, var):
-        return var.value
+def getVal(model: Any, var: Any) -> Any:
+    """Return a Pyomo variable value for legacy model adapters."""
+    return var.value
 
-def getVars(model):
+def getVars(model: Any) -> Any:
+    """Return active Pyomo variables from a model instance."""
     return model.component_data_objects(pe.Var,active=True)
 
 # robust extensible bin packing problem model init
-def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
+def rebppinit_pyomo(
+    a_bar: np.ndarray,
+    a_hat: np.ndarray,
+    V: float,
+    c: np.ndarray,
+    Omega: float,
+) -> Any:
     r"""Create the finite-scenario Pyomo master for formulation (1).
 
     The arrays correspond to ``\bar a``, ``\hat a``, and the fixed model
@@ -202,7 +211,8 @@ def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
     return model #mdl #, mdl.theta, mdl.y, mdl.alpha_bar, mdl.z
 
 
-def add_cut(mdl,a_bar,a):
+def add_cut(mdl: Any, a_bar: np.ndarray, a: np.ndarray) -> None:
+    r"""Add a scenario cut for a candidate scenario ``a \in U_\Omega``."""
     sum_expression = 0
     m = len(a_bar)
     for j in mdl.J:
@@ -224,7 +234,16 @@ def add_cut(mdl,a_bar,a):
 
 
 
-def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
+def update_rebpp_pyomo(
+    mdl: Any,
+    a_bar: np.ndarray,
+    V: float,
+    c: np.ndarray,
+    a: np.ndarray,
+    scenario_num: int,
+    no_var: bool = NO_VAR_GEN,
+) -> Tuple[Any, Any]:
+    r"""Add scenario-indexed constraints to the finite master model."""
     
     """
     used to recieve new model and alph
@@ -245,9 +264,20 @@ def update_rebpp_pyomo(mdl, a_bar, V, c, a, scenario_num, no_var = NO_VAR_GEN):
     return mdl, mdl.alpha
 
 #@jit(nopython=False)
-def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
-    """
-    used to retrive the p_star and a values
+def convex_pw_knapsack_wrapper(
+    p: np.ndarray,
+    b: np.ndarray,
+    Omega: float,
+    z: np.ndarray,
+    a_hat: np.ndarray,
+    sos: bool = True,
+) -> Tuple[float, List[float], float]:
+    r"""Solve the separation problem and recover a worst-case scenario.
+
+    The inputs encode Eq. (3)'s ``gamma_j``, ``beta_j``, and ``u_j`` for the
+    current master assignment ``Z^*``. The return value is ``eta^*`` from
+    Proposition 1, the deviation vector ``a^* \in U_\Omega``, and any fixed
+    intercept contribution.
     """
     n = len(a_hat)
     m = len(p)
@@ -330,7 +360,8 @@ def convex_pw_knapsack_wrapper(p, b, Omega, z, a_hat,sos = True):
 #model = pe.ConcreteModel()
 
 #@jit(nopython=True)
-def callback_helper(mmodel,model):
+def callback_helper(mmodel: Any, model: Any) -> np.ndarray:
+    r"""Extract an integral assignment ``Z^*`` from a Gurobi callback."""
     yy = []
     #zz = []
     n = len(model.a_bar)
@@ -356,7 +387,15 @@ def callback_helper(mmodel,model):
 
 opt = pe.SolverFactory('gurobi_persistent', report_timing=True)
 
-def add_cut_two(Z,a_bar,a,V,c,model):
+def add_cut_two(
+    Z: np.ndarray,
+    a_bar: np.ndarray,
+    a: np.ndarray,
+    V: float,
+    c: np.ndarray,
+    model: Any,
+) -> Any:
+    r"""Add a lazy robust cut for assignment matrix ``Z^*``."""
     fill = (a_bar+a)@Z
     JJ = np.where(fill > V)
     if DEBUG_CB:
@@ -374,7 +413,8 @@ def add_cut_two(Z,a_bar,a,V,c,model):
 
 
 #@pyomo_callback('my_callback')
-def my_callback(cb_m, cb_opt, cb_where):
+def my_callback(cb_m: Any, cb_opt: Any, cb_where: int) -> None:
+    r"""Separate an incumbent master solution inside Gurobi's MIP callback."""
     model = cb_m
     mmodel = opt._solver_model
 
@@ -406,8 +446,8 @@ def my_callback(cb_m, cb_opt, cb_where):
     #else:
     #raise Exception("invalid callback..")
 
-def print_sol(model):
-    #used to print the values of the variables and the objective value
+def print_sol(model: Any) -> None:
+    """Display the assignment variables and current master objective."""
     #for var in model.getVars():
     #    val = model.getVal(var)
     #    if val != 0:
@@ -415,7 +455,19 @@ def print_sol(model):
     pe.display(model.z)
     print("\nmodel obj val: ",pe.value(model.obj.expr))
 
-def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
+def create_sos_instance(
+    a_bar: np.ndarray,
+    a_hat: np.ndarray,
+    V: float,
+    c: np.ndarray,
+    model: Any,
+    Z: Any = None,
+) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
+    r"""Construct the 2PCK breakpoints from a master assignment.
+
+    This is the code realization of Observation 1: each assigned bin becomes
+    one function with parameters ``gamma_j``, ``beta_j``, and ``u_j``.
+    """
     n = len(a_bar)
     m = len(c)
     #print("n=",n, " m=", m)
@@ -467,11 +519,21 @@ def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
             assert p[j, 1] >= p[j, 0]
     return p,b, ZZ
 
-def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
-    """Run row-and-column generation until no violated scenario remains.
+def solve_instance(
+    a_bar: np.ndarray,
+    a_hat: np.ndarray,
+    V: float,
+    c: np.ndarray,
+    Omega: float,
+    timelimit: float = TIME_LIMIT,
+) -> Tuple[Any, bool, float, float, float, int, float, float, int]:
+    r"""Run Algorithm 1 until no violated scenario remains.
 
     Returns assignment and timing statistics used by the case-study and
     benchmark scripts.
+    The master variables ``(Y^*, Z^*, Theta^*)`` are solved, then the inner
+    maximization returns ``eta^*``. A new scenario is generated whenever
+    ``eta^* > Theta^* + VIOL_TOL``.
     """
     n = len(a_bar)
     m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))

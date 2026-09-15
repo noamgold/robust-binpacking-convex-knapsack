@@ -42,6 +42,7 @@ import math
 import random
 import sys
 import time
+from typing import List, Tuple
 
 import numpy as np
 from numba import jit
@@ -53,12 +54,36 @@ np.random.seed(0)
 
 # compute upper bound based on relaxation and optional decreasing ratio ordering
 @jit(nopython=True)
-def P_upper_bound(w, p, W, indexes=[]):
-    """Return a fractional/greedy upper bound on binary-knapsack profit.
+def P_upper_bound(
+    w: np.ndarray,
+    p: np.ndarray,
+    W: int,
+    indexes: np.ndarray = np.array([], dtype=np.int64),
+) -> int:
+    r"""Compute a fractional-knapsack upper bound.
 
     Here ``w`` and ``p`` are the binary-knapsack weights and profits and ``W``
     is the capacity.  The bound is used to limit the profit-indexed state
     space ``Pmax`` in the convex-knapsack DP.
+    Parameters
+    ----------
+    w, p : numpy.ndarray
+        Binary-knapsack weights ``u`` and profits ``\bar p``.
+    W : int
+        Capacity, corresponding to ``Omega`` in the weight-indexed relaxation.
+    indexes : numpy.ndarray, optional
+        Item order. If empty, items are sorted by decreasing ``p[i] / w[i]``.
+
+    Returns
+    -------
+    int
+        An upper bound on the attainable binary-knapsack profit.
+
+    Notes
+    -----
+    This bound determines a finite ``Pmax`` for the profit-indexed DP in
+    Algorithm 2 of the paper. The typed empty-array default avoids a Numba
+    fingerprinting failure caused by a Python list default.
     """
     # curr_total_weight = total weight currently packed into the knapsack
     # p_bar = running upper-bound estimate of attainable profit
@@ -120,8 +145,14 @@ def P_upper_bound(w, p, W, indexes=[]):
 
 
 @jit(nopython=True)
-def for_loop_method_all_w_save_all(p, w, W, B_all):
-    """Build weight-indexed DP tables for all item-prefix states."""
+def for_loop_method_all_w_save_all(
+    p: np.ndarray, w: np.ndarray, W: int, B_all: np.ndarray
+) -> None:
+    r"""Build all prefix states of the weight-indexed DP.
+
+    The table stores ``Pi_f(U,k)``, the maximum profit achievable with weight
+    at most ``U`` using the first ``k`` items. The table is mutated in place.
+    """
     # This DP table stores, for every capacity value, the best profit seen so far.
     # B_all[k, weight] = best profit after processing the first k+1 items and using exactly
     # 'weight' capacity.
@@ -147,8 +178,14 @@ def for_loop_method_all_w_save_all(p, w, W, B_all):
 
 
 @jit(nopython=True)
-def for_loop_method_all_p_save_all(p, w, Pmax, B_all):
-    """Build profit-indexed minimum-weight DP tables up to ``Pmax``."""
+def for_loop_method_all_p_save_all(
+    p: np.ndarray, w: np.ndarray, Pmax: int, B_all: np.ndarray
+) -> None:
+    r"""Build all prefix states of the profit-indexed DP.
+
+    The table stores ``zeta_f(P,k)``, the minimum weight required to attain
+    profit ``P`` with the first ``k`` items. The table is mutated in place.
+    """
     # This version is profit-based, not capacity-based.
     # B_all[k, profit] = minimum weight needed to achieve exactly 'profit'
     # after processing the first k+1 items.
@@ -173,10 +210,37 @@ def for_loop_method_all_p_save_all(p, w, Pmax, B_all):
 
 
 @jit(nopython=True)
-def for_loop_method_all_w(p, w, W, B_in=np.array([]), i_skip=int(-1), return_items=True, sorted_two_piece=False):
-    """Solve binary knapsack by capacity, optionally excluding one item.
+def for_loop_method_all_w(
+    p: np.ndarray,
+    w: np.ndarray,
+    W: int,
+    B_in: np.ndarray = np.array([]),
+    i_skip: int = int(-1),
+    return_items: bool = True,
+    sorted_two_piece: bool = False,
+) -> Tuple[np.ndarray, List[List[int]]]:
+    r"""Solve the capacity-indexed binary-knapsack recurrence.
 
     The returned value is the implementation of ``Pi_f(W,k)`` from Appendix A.
+    Parameters
+    ----------
+    p, w : numpy.ndarray
+        Profits ``\bar p`` and weights ``u``.
+    W : int
+        Capacity, usually ``Omega``.
+    B_in : numpy.ndarray, optional
+        Previously computed DP state for reuse across pivot exclusions.
+    i_skip : int, optional
+        Pivot item ``f`` excluded from the binary backbone.
+    return_items : bool, optional
+        Whether to reconstruct selected item indices.
+    sorted_two_piece : bool, optional
+        Restrict the scan to the ordered two-piece shortcut.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, list[list[int]]]
+        Profit table and item reconstructions for each capacity.
     """
     # This is the main capacity-based DP function.
     # It computes the best profit achievable for each total weight value from 0 to W.
@@ -230,7 +294,25 @@ def for_loop_method_all_w(p, w, W, B_in=np.array([]), i_skip=int(-1), return_ite
     return B, items
 
 
-def generate_random_instance(k_random, R, inversely_cor=True):
+def generate_random_instance(
+    k_random: int, R: int, inversely_cor: bool = True
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Generate an inverse-correlated knapsack benchmark instance.
+
+    Parameters
+    ----------
+    k_random : int
+        Number of items ``n``.
+    R : int
+        Upper scale of generated profits.
+    inversely_cor : bool, optional
+        If true, use the hard inverse-correlation construction from the paper.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, numpy.ndarray]
+        Profit vector ``\bar p`` and weight vector ``u``.
+    """
     # Generate synthetic knapsack data for benchmarking and testing.
     # Each item gets a profit and a weight.
     b_random = np.zeros(k_random, dtype=int)
@@ -257,10 +339,35 @@ def generate_random_instance(k_random, R, inversely_cor=True):
 
 
 @jit(nopython=True)
-def for_loop_method_all_p(p, w, P, B_in=np.array([], dtype=np.int64), i_skip=int(-1), return_items=True, sorted_two_piece=False):
-    """Solve binary knapsack by profit using minimum required weight.
+def for_loop_method_all_p(
+    p: np.ndarray,
+    w: np.ndarray,
+    P: int,
+    B_in: np.ndarray = np.array([], dtype=np.int64),
+    i_skip: int = int(-1),
+    return_items: bool = True,
+    sorted_two_piece: bool = False,
+) -> Tuple[np.ndarray, List[List[int]]]:
+    r"""Solve the profit-indexed binary-knapsack recurrence.
 
     This is the implementation of the ``zeta_f(P,k)`` recurrence in Eq. (10).
+    Parameters
+    ----------
+    p, w : numpy.ndarray
+        Profits ``\bar p`` and weights ``u``.
+    P : int
+        Maximum profit state ``Pmax``.
+    B_in : numpy.ndarray, optional
+        Previously computed state for DP reuse.
+    i_skip : int, optional
+        Pivot item ``f`` excluded from the state.
+    return_items, sorted_two_piece : bool, optional
+        Reconstruction and ordered-shortcut controls.
+
+    Returns
+    -------
+    tuple[numpy.ndarray, list[list[int]]]
+        Minimum-weight table ``zeta_f(P,k)`` and reconstructions.
     """
     # Profit-based DP:
     # B[profit] = minimal total weight needed to achieve exactly `profit`.
@@ -301,7 +408,10 @@ def for_loop_method_all_p(p, w, P, B_in=np.array([], dtype=np.int64), i_skip=int
     return B, items #max_p
 
 
-def for_loop_method_profit(P,p,w,W):
+def for_loop_method_profit(
+    P: int, p: np.ndarray, w: np.ndarray, W: int
+) -> np.ndarray:
+    """Return the legacy profit-state DP table up to capacity ``W``."""
     # Legacy profit-state DP helper:
     # B[profit] stores the minimum weight required to realize that profit.
     n = len(p)
@@ -325,7 +435,13 @@ def for_loop_method_profit(P,p,w,W):
     return max_p
 
 
-def knapsack(w, p, W):
+def knapsack(w: np.ndarray, p: np.ndarray, W: int) -> float:
+    """Return the best binary-knapsack value at capacity ``W``.
+
+    This compatibility wrapper is retained for historical benchmark callers;
+    new code should call one of the explicitly weight- or profit-indexed DP
+    routines above.
+    """
     """Compatibility helper used by the legacy benchmark main block.
 
     Returns the best DP value at capacity W using the active weight-based DP
