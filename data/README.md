@@ -1,10 +1,30 @@
-# Robust Extensible Bin Packing and a Convex Knapsack Problem
+# Robust Extensible Bin Packing and Revisiting the Convex Knapsack Problem
 
 Research-code documentation for the paper:
 
 > Noam Goldberg, Michael Poss, and Yariv N. Marmor, *Robust Extensible Bin Packing and a Convex Knapsack Problem*, August 10, 2026.
 
 This document is intentionally located beside the input data. It is the canonical guide to the data, the mathematical model, the implementation, and the computational experiments in this repository.
+
+## Abstract / Overview
+
+This repository implements the computational framework from the paper. The
+outer problem assigns uncertain-duration items to extensible bins and minimizes
+the number of opened bins plus a worst-case overtime penalty. The inner
+adversary selects a scenario from the budgeted ambiguity set
+$\mathcal{U}_\Omega$, producing the largest aggregate convex overtime cost.
+
+The resulting min-max problem is solved by row-and-column generation. A finite
+scenario master problem proposes an assignment, while a separation oracle
+searches for a worst-case scenario. For integral assignments, the oracle is a
+two-piece convex knapsack problem. The repository provides both a dynamic
+programming oracle and an SOS2/Gurobi formulation, allowing exact-value and
+runtime comparisons at the algorithmic level.
+
+The extensible capacity is central: a bin has nominal capacity $V$, but it may
+exceed $V$ at a cost determined by a convex positive-part function. Thus the
+model captures the operational trade-off between opening additional shifts and
+absorbing uncertainty as overtime.
 
 ## 1. Research Scope
 
@@ -34,7 +54,40 @@ $$
 
 The model therefore trades off the number of opened shifts against worst-case overtime.
 
-## 2. Mathematical Model and Code Variables
+## 2. Repository Structure
+
+```text
+src/
+	knapsack.py       Binary-knapsack DP primitives and synthetic instances
+	sos2.py           SOS2 model and convex-knapsack DP algorithms
+	rebpp.py          REBP master, separation, and scenario generation
+	rbptest_grb.py    REBP runtime benchmark driver
+data/
+	30/, 60/, 90/    Song et al. benchmark instance families
+	README.md         This canonical data and experiment documentation
+	...               Auxiliary benchmark and case-study resources
+```
+
+The implementation is kept once under `src/`; generated schedules, Numba
+caches, and experiment outputs are not source inputs.
+
+## 3. Dependencies and Solvers
+
+The reference environment uses Python 3.12 and `.venv`. The code depends on:
+
+- Python standard library: `math`, `random`, `statistics`, `time`, `typing`,
+	and `os`.
+- Numerical/data packages: NumPy, Pandas, and Numba.
+- Optimization modeling: Pyomo.
+- Optimization solvers: Gurobi Optimizer through `gurobipy` and PySCIPOpt for
+	legacy compatibility paths.
+- `packaging`, required by the Pyomo/Gurobi integration in this environment.
+
+The SOS2 formulation and REBP master require a valid Gurobi installation and
+license. Gurobi version, CPU hardware, thread settings, and license type can
+materially affect runtime results.
+
+## 4. Mathematical Model and Code Variables
 
 The assignment formulation in the paper uses:
 
@@ -73,7 +126,7 @@ $$
 
 The objective is $\min \sum_j y_j+\theta$. These are formulation (1) in the paper.
 
-## 3. Algorithm 1: Row-and-Column Generation
+## 5. Algorithm 1: Row-and-Column Generation
 
 The model has infinitely many scenario-indexed constraints because $U_\Omega$ is continuous. The implementation follows the paper's row-and-column generation procedure:
 
@@ -111,7 +164,7 @@ $$
 
 These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
 
-## 4. Separation as Two-Piece Convex Knapsack
+## 6. Separation as Two-Piece Convex Knapsack
 
 For an integral assignment, each bin becomes one convex piecewise-linear function. The paper's Observation 1 defines
 
@@ -143,7 +196,7 @@ $$
 
 In `src/rebpp.py`, `create_sos_instance` constructs the three breakpoints for each bin: the zero point, the point at which overtime begins, and the full-deviation point. The resulting matrices `p` and `b` are passed to `src/sos2.py`.
 
-## 5. `src/sos2.py`: SOS2 and DP Solvers
+## 7. `src/sos2.py`: SOS2 and DP Solvers
 
 This module contains two independent solution paths for 2PCK.
 
@@ -209,7 +262,7 @@ $$
 
 This version is especially relevant inside REBP because the REBP instance uses fractional overtime costs, making the capacity-indexed formulation natural in the separation routine.
 
-## 6. `src/knapsack.py`: Binary-Knapsack Primitives
+## 8. `src/knapsack.py`: Binary-Knapsack Primitives
 
 This module provides the lower-level recurrences used by both convex-knapsack variants:
 
@@ -221,7 +274,7 @@ This module provides the lower-level recurrences used by both convex-knapsack va
 
 The module is not a second REBP implementation. It is the exact-DP support layer for `sos2.py`.
 
-## 7. `src/rbptest_grb.py`: REBP Runtime Experiments
+## 9. `src/rbptest_grb.py`: REBP Runtime Experiments
 
 `rbptest_grb.py` reproduces the REBP benchmark protocol described in Section 5.2 of the paper. For each input instance it sets
 
@@ -247,7 +300,7 @@ The files in `data/30`, `data/60`, and `data/90` are the Song et al. benchmark f
 
 This script is intentionally a long-running experiment. It is not a smoke test.
 
-## 8. Mapping Code to Paper Results
+## 10. Mapping Code to Paper Results
 
 ### Table 1: Convex-knapsack timing
 
@@ -281,7 +334,7 @@ The robust schedules in the paper generally improve utilization and reduce worst
 
 **Current branch limitation:** the `Dep13300with_a_ahat...` case-study files were deliberately removed from `TEST` in commit `e9eeb27`, so Table 4 cannot be regenerated from this checkout until those inputs are restored. The benchmark data for Sections 5.1 and 5.2 remain available under `data/30`, `data/60`, and `data/90`.
 
-## 9. Installation and Execution
+## 11. Installation and Execution
 
 The repository uses Python 3.12 and the local virtual environment `.venv`. Required packages are NumPy, Pandas, Numba, Pyomo, `gurobipy`, PySCIPOpt, and `packaging`. Gurobi also requires a valid license.
 
@@ -298,11 +351,26 @@ cd src
 ../.venv/bin/python -c "import knapsack, sos2, rebpp; print('core imports passed')"
 ```
 
-Run the available benchmark experiment:
+### Quick Start: REBP benchmark
+
+From the repository root, run the Gurobi benchmark against the instance files
+under `data/30`, `data/60`, or `data/90`:
+
+```bash
+cd /home/rokachda/binpacking_summer_project
+.venv/bin/python src/rbptest_grb.py
+```
+
+The script currently uses the benchmark family configured by `num_items` in
+`src/rbptest_grb.py` and reports runtime, master runtime, scenario iterations,
+bin counts, and time-limit statistics. It is a long-running experiment rather
+than a short smoke test.
+
+Other experiment entry points are:
 
 ```bash
 .venv/bin/python src/sos2.py
-.venv/bin/python src/rbptest_grb.py
+.venv/bin/python src/rebpp.py
 ```
 
 Run the case-study entry point only after restoring compatible case-study input files:
@@ -313,13 +381,13 @@ Run the case-study entry point only after restoring compatible case-study input 
 
 Numba compiles kernels on first use, and Gurobi runtime depends on hardware, solver version, license configuration, and parameter settings. Do not compare timings across machines without recording these conditions.
 
-## 10. Data Provenance
+## 12. Data Provenance
 
 - `data/30`, `data/60`, and `data/90` contain instances retrieved from the KU Leuven RMAP instance collection and used in the Song et al. benchmark protocol.
 - The healthcare case-study data were originally associated with the SEE Lab source cited in `data/readme` and the paper.
 - The current `TEST` branch no longer contains the `Dep13300with_a_ahat...` files. Their removal is intentional and recorded in Git history.
 
-## 11. Citation
+## 13. Citation
 
 Goldberg, N., Poss, M., and Marmor, Y. N. (2026). *Robust Extensible Bin Packing and a Convex Knapsack Problem*. August 10, 2026.
 
@@ -327,7 +395,7 @@ For the benchmark family, also cite:
 
 Song, G., Kowalczyk, D., and Leus, R. (2018). The robust machine availability problem—bin packing under uncertainty. *IISE Transactions*, 50(11), 997–1012.
 
-## 12. API and Maintenance Notes
+## 14. API and Maintenance Notes
 
 The public computational API follows a NumPy-documentation style. Every
 algorithmic entry point documents its mathematical inputs, outputs, and role
