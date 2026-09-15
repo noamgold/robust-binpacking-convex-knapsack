@@ -33,7 +33,7 @@ The paper studies **robust extensible bin packing (REBP)**. An item represents a
 The uncertainty set is the continuous budgeted set
 
 $$
-U_\Omega = \left\{a \in \mathbb{R}^m : 0 \le a_i \le \hat a_i,\quad \sum_{i=1}^m a_i \le \Omega\right\}.
+U_\Omega = \{a \in \mathbb{R}^m : 0 \le a_i \le \hat a_i,\quad \sum_{i=1}^m a_i \le \Omega\}.
 $$
 
 The uncertainty budget $\Omega$ limits the total deviation that an adversarial scenario can distribute across all assigned items. This is the key robust-optimization distinction from a nominal bin-packing model.
@@ -41,7 +41,7 @@ The uncertainty budget $\Omega$ limits the total deviation that an adversarial s
 For a bin $j$, assignment set $B_j$, and scenario $a \in U_\Omega$, the paper defines the cost
 
 $$
-f(B_j,a) = \mathbf{1}_{\{B_j \ne \varnothing\}} + c_j\left(\sum_{i\in B_j}(\bar a_i+a_i)-V\right)_+,
+f(B_j,a) = \mathbf{1}_{\{B_j \ne \varnothing\}} + c_j(\sum_{i\in B_j}(\bar a_i+a_i)-V)_+,
 $$
 
 where $(x)_+ = \max\{x,0\}$. The REBP objective is
@@ -143,7 +143,7 @@ The separation objective is Proposition 1 of the paper:
 
 $$
 \eta^* = \max_{a\in U_\Omega}
-\sum_j c_j\left(\sum_i z^*_{ij}(\bar a_i+a_i)-Vy^*_j\right)_+.
+\sum_j c_j(\sum_i z^*_{ij}(\bar a_i+a_i)-Vy^*_j)_+.
 $$
 
 A scenario is needed whenever $\eta^*>\theta^*$, up to the implementation tolerance `VIOL_TOL`.
@@ -159,7 +159,7 @@ $$
 and the additional lower bound
 
 $$
-(1-y_{j+1})c\left(\sum_i\bar a_i+\Omega-jV\right)\le\theta.
+(1-y_{j+1})c(\sum_i\bar a_i+\Omega-jV)\le\theta.
 $$
 
 These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
@@ -169,7 +169,7 @@ These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
 For an integral assignment, each bin becomes one convex piecewise-linear function. The paper's Observation 1 defines
 
 $$
-\gamma_j = c_j\left(\sum_{i:z^*_{ij}=1}\bar a_i-V\right),
+\gamma_j = c_j(\sum_{i:z^*_{ij}=1}\bar a_i-V),
 \qquad
 \beta_j=c_j,
 $$
@@ -184,8 +184,8 @@ The separation problem becomes the two-piece convex knapsack (2PCK):
 
 $$
 \max_{x}
-\left\{\sum_j p_j(x_j):
-\sum_j x_j\le\Omega,\ 0\le x_j\le u_j\right\},
+\{\sum_j p_j(x_j):
+\sum_j x_j\le\Omega,\ 0\le x_j\le u_j\},
 $$
 
 with
@@ -232,7 +232,7 @@ $$
 The pivot item $f$ is the possible fractional item identified by the extreme-point structure of 2PCK. The solution is evaluated as
 
 $$
-P^* = \max_{f,P}\left\{P+\hat p_f\left(\Omega-\zeta_f(P,n)\right)\right\},
+P^* = \max_{f,P}\{P+\hat p_f(\Omega-\zeta_f(P,n))\},
 $$
 
 where $\hat p_f$ is the piecewise value of the pivot item.
@@ -240,7 +240,7 @@ where $\hat p_f$ is the piecewise value of the pivot item.
 The paper proves that sorting by non-increasing second-segment slope allows reuse of DP states and reduces the running time to
 
 $$
-O\left(n(P_{\max}+\log n)\right),
+O(n(P_{\max}+\log n)),
 $$
 
 rather than recomputing a full table for every excluded item.
@@ -257,7 +257,7 @@ and its final evaluation follows Appendix A, Eq. (18):
 
 $$
 P^*=\max_{f}\max_{U\in[\Omega]}
-\left\{\Pi_f(U,n)+\hat p_f(\Omega-U)\right\}.
+\{\Pi_f(U,n)+\hat p_f(\Omega-U)\}.
 $$
 
 This version is especially relevant inside REBP because the REBP instance uses fractional overtime costs, making the capacity-indexed formulation natural in the separation routine.
@@ -293,7 +293,7 @@ $$
 and the number of candidate bins to
 
 $$
-n=\left\lceil\frac{2(\sum_i\bar a_i+\Omega)}{V}\right\rceil.
+n=\lceil\frac{2(\sum_i\bar a_i+\Omega)}{V}\rceil.
 $$
 
 The files in `data/30`, `data/60`, and `data/90` are the Song et al. benchmark families. The script reports elapsed runtime, master runtime, number of scenario-generation iterations, number of bins, and time-limit counts.
@@ -330,9 +330,7 @@ The paper reports that symmetry breaking and inequality (5) can substantially re
 
 Table 4 compares actual, nominal, and robust schedules for Weeks 3, 7, and 8 under two prediction models, V1 and V2. The quantities are utilization and overtime summaries, evaluated over daily schedules. The model inputs are the case-study vectors $\bar a$, $\hat a$, the shift length $V$, and percentile-derived $\Omega$ values (477, 721, and 971).
 
-The robust schedules in the paper generally improve utilization and reduce worst-case overtime relative to the actual and nominal schedules. The code path for this study is the `__main__` block of `src/rebpp.py`, which reads a case-study CSV, solves `solve_instance`, and writes a schedule CSV.
-
-**Current branch limitation:** the `Dep13300with_a_ahat...` case-study files were deliberately removed from `TEST` in commit `e9eeb27`, so Table 4 cannot be regenerated from this checkout until those inputs are restored. The benchmark data for Sections 5.1 and 5.2 remain available under `data/30`, `data/60`, and `data/90`.
+The robust schedules in the paper generally improve utilization and reduce worst-case overtime relative to the actual and nominal schedules. The code path for this study is the `__main__` block of `src/rebpp.py`, which reads a compatible case-study CSV, solves `solve_instance`, and writes a schedule CSV.
 
 ## 11. Installation and Execution
 
@@ -373,7 +371,7 @@ Other experiment entry points are:
 .venv/bin/python src/rebpp.py
 ```
 
-Run the case-study entry point only after restoring compatible case-study input files:
+Run the case-study entry point when compatible case-study input files are available:
 
 ```bash
 .venv/bin/python src/rebpp.py
@@ -385,7 +383,6 @@ Numba compiles kernels on first use, and Gurobi runtime depends on hardware, sol
 
 - `data/30`, `data/60`, and `data/90` contain instances retrieved from the KU Leuven RMAP instance collection and used in the Song et al. benchmark protocol.
 - The healthcare case-study data were originally associated with the SEE Lab source cited in the paper.
-- The current `TEST` branch no longer contains the `Dep13300with_a_ahat...` files. Their removal is intentional and recorded in Git history.
 
 ## 13. Citation
 
