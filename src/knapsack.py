@@ -357,7 +357,14 @@ def knapsack(w: np.ndarray, p: np.ndarray, W: int) -> float:
 
 
 
+
 if __name__ == "__main__":
+    
+    """
+    Code below used to track run times for the for loop method vs the scip method
+    and can also be used to track run times for the f method vs g method (profit vs weight)
+    """
+    
     st = time.time()
 
     fin_g = []
