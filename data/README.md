@@ -200,7 +200,7 @@ In `src/rebpp.py`, `create_sos_instance` constructs the three breakpoints for ea
 
 This module contains two independent solution paths for 2PCK.
 
-### 5.1 SOS2/Gurobi formulation
+### 7.1 SOS2/Gurobi formulation
 
 The function `sos2_gurobi(p, b, B)` implements the paper's formulation (16). For every item/bin $j$, `t[j,k]` are convex-combination variables over breakpoints $k$:
 
@@ -220,7 +220,7 @@ $$
 
 This route uses Pyomo and Gurobi. It is a mathematically direct MIP representation of the convex functions, but its running time may be sensitive to branch-and-bound behavior.
 
-### 5.2 Profit-indexed DP: Algorithm 2
+### 7.2 Profit-indexed DP: Algorithm 2
 
 `convex_pw_knapsack_dp_profit` implements the paper's Algorithm 2. It uses the binary-knapsack state
 
@@ -245,7 +245,7 @@ $$
 
 rather than recomputing a full table for every excluded item.
 
-### 5.3 Weight-indexed DP: Appendix A
+### 7.3 Weight-indexed DP: Appendix A
 
 `convex_pw_knapsack_dp` implements the $\Omega$-DP variant. Its state is
 

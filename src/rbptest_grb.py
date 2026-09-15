@@ -9,8 +9,6 @@ and overtime coefficient ``c = 1.5/V``.  The input files are under
 This script is intentionally a long-running experiment, not a unit test.
 """
 
-#from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
-#from knapsack import rebppinit, update_rebpp
 from rebpp import rebppinit_pyomo, print_sol, solve_instance
 import numpy as np
 import pandas as pd
@@ -20,23 +18,15 @@ import statistics as stat
 import pyomo.environ as pe
 from pyomo.opt import SolverStatus, TerminationCondition
 
-__DEBUG = False
-#if __name__ == "__main__":
 NUM_ITEMS = 90 #20 #90
-num_items = [20] #[20,30,60,90] #[30,60,90] #[60,90]
+num_items = [20]
 TIME_LIMIT = 7200
-#3600
 devProp = 0.4
-c_const = 1.5 #2 #1.5
+c_const = 1.5
 
 num_tests = 10
-# Five robustness levels are considered, either 0%, 5%, 10%, 15% or 20% of sum(a_hat)
-rob_level_mult = 0.1 #0 #0.05
-# Four deadlines are generated for each instance, which are equal to a fraction of the sum of the worst-case job processing times; the fractions considered are 1/4, 1/6,1/8 and 1/10
+rob_level_mult = 0.1
 V_mult = 1/8
-#NZ_TOl = 1e-7
-#GAPVAL1 = 0.4
-#GAPVAL2 = 5e-2
 
 
 
@@ -58,15 +48,13 @@ def read_instance(i: int, sz: int, ss: int) -> np.ndarray:
         Sorted nominal durations ``\bar a``.
     """
     fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
-    #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
     print("opening: ", fileName)
     test_data = pd.read_csv(fileName,skiprows=[1])
-    #test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
     a_bar = np.sort(test_data.iloc[range(ss),0])
     return a_bar
 
 #test_data = pd.read_csv("../data/ma30.csv")
-for sz in num_items: # [30, 60,90]:
+for sz in num_items:
     runTimes = []
     masterTimes = []
     runIter = []
@@ -74,9 +62,6 @@ for sz in num_items: # [30, 60,90]:
     runTimesWoTL = []
     masterTimesWoTL = []
     for instNum in range(num_tests):
-        #test_data = pd.read_csv("../data/ma30.csv")
-        #a_bar = test_data["a_bar_" + str(instNum)]
-        # The processing-time deviation is 0.2 times the processing time, rounded to the nearest higher integer;
         a_bar = []
         if sz < 30:
             a_bar = read_instance(instNum, 30, min(NUM_ITEMS, sz))
@@ -87,7 +72,7 @@ for sz in num_items: # [30, 60,90]:
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))
         V = int(V_mult*(sum(a_hat)+sum(a_bar)))
-        c_mult = c_const / V  # 3/(2*V) #2 / V  # 0.05
+        c_mult = c_const / V
 
         n = len(a_bar)
         m = int(math.ceil(2*(sum(a_bar)+Omega)/V))

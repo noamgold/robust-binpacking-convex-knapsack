@@ -52,7 +52,6 @@ import pyomo.environ as pe
 np.random.seed(0)
 
 
-# compute upper bound based on relaxation and optional decreasing ratio ordering
 @jit(nopython=True)
 def P_upper_bound(
     w: np.ndarray,
@@ -85,62 +84,37 @@ def P_upper_bound(
     Algorithm 2 of the paper. The typed empty-array default avoids a Numba
     fingerprinting failure caused by a Python list default.
     """
-    # curr_total_weight = total weight currently packed into the knapsack
-    # p_bar = running upper-bound estimate of attainable profit
     curr_total_weight = 0
     p_bar = 0
 
-    # n = number of items in the instance
     n = len(p)
 
-    # Use the original arrays for readability. These are 1D vectors: one value per item.
     w_array = w
     p_array = p
 
-    # If no explicit ordering was provided, compute rankings by profit/weight ratio.
-    # A higher ratio means the item is more profitable per unit of used capacity.
     if len(indexes) < n:
-        # Example: ratios[i] = p[i] / w[i]
         ratios = np.divide(p_array, w_array)
 
-        # Sort indices from highest ratio to lowest ratio.
         indexes = np.argsort(ratios)
 
-        # Reverse order so the best ratios are processed first.
         reversed_indexes = np.flip(indexes)
         indexes = reversed_indexes
 
-    # Walk through the items in the chosen order.
     for index in indexes:
-        # weight = how much capacity this item consumes
-        # profit = how much value this item contributes
         weight = w_array[index]
         profit = p_array[index]
 
-        # If the item fits fully in the remaining capacity, take it entirely.
         if curr_total_weight + weight < W:
-            # Ignore zero-profit items; they do not improve the objective.
             if profit > 0:
                 curr_total_weight += weight
                 p_bar += profit
 
-        # Otherwise, the item does not fit completely.
-        # We take only a fraction of it, which is the standard fractional-knapsack relaxation.
         else:
-            # remaining_space = how much capacity is still free
             remaining_space = W - curr_total_weight
-
-            # fraction of the item that can fit in the remaining capacity
             fraction = remaining_space / weight
-
-            # Add only the proportional profit for the usable fraction.
             p_bar += profit * fraction
-
-            # Stop immediately: this is an upper bound, so once the knapsack is full,
-            # taking additional items is no longer relevant for this relaxation.
             return int(math.floor(p_bar))
 
-    # If all items were processed without exceeding capacity, return the final estimate.
     return int(math.floor(p_bar))
 
 
@@ -153,26 +127,16 @@ def for_loop_method_all_w_save_all(
     The table stores ``Pi_f(U,k)``, the maximum profit achievable with weight
     at most ``U`` using the first ``k`` items. The table is mutated in place.
     """
-    # This DP table stores, for every capacity value, the best profit seen so far.
-    # B_all[k, weight] = best profit after processing the first k+1 items and using exactly
-    # 'weight' capacity.
     n = len(p)
     for k in range(0, n):
-        # Copy the previous layer before updating with the new item.
         if k >= 1:
             B_all[k, :] = B_all[k - 1, :].copy()
 
-        # Skip zero-profit items since they never help the objective.
         if p[k] > 0:
-            # Try every possible capacity value from this item's weight onward.
             for weight in range(w[k], W + 1):
                 if k == 0:
-                    # Base case: first item alone takes the value p[0].
                     B_all[0, weight] = p[0]
                 else:
-                    # Standard knapsack transition:
-                    # either skip the current item, or include it
-                    # and add its profit to the best value at the smaller remaining capacity.
                     if B_all[k - 1, weight - w[k]] + p[k] > B_all[k - 1, weight]:
                         B_all[k, weight] = B_all[k - 1, weight - w[k]] + p[k]
 
@@ -186,9 +150,6 @@ def for_loop_method_all_p_save_all(
     The table stores ``zeta_f(P,k)``, the minimum weight required to attain
     profit ``P`` with the first ``k`` items. The table is mutated in place.
     """
-    # This version is profit-based, not capacity-based.
-    # B_all[k, profit] = minimum weight needed to achieve exactly 'profit'
-    # after processing the first k+1 items.
     n = len(p)
     B_all[0, 0] = 0
 
@@ -198,13 +159,9 @@ def for_loop_method_all_p_save_all(
 
         if p[k] > 0:
             if k == 0:
-                # Base case: if we want profit p[0], the minimum weight needed is w[0].
                 B_all[0, p[0]] = w[0]
             else:
-                # Try every profit value from p[k] up to Pmax.
                 for profit in range(p[k], Pmax + 1):
-                    # If we can reach (profit - p[k]) using previous items,
-                    # then adding item k gives a new candidate with weight + w[k].
                     if B_all[k - 1, profit - p[k]] < sys.maxsize and B_all[k - 1, profit - p[k]] + w[k] < B_all[k - 1, profit]:
                         B_all[k, profit] = B_all[k - 1, profit - p[k]] + w[k]
 
@@ -242,55 +199,39 @@ def for_loop_method_all_w(
     tuple[numpy.ndarray, list[list[int]]]
         Profit table and item reconstructions for each capacity.
     """
-    # This is the main capacity-based DP function.
-    # It computes the best profit achievable for each total weight value from 0 to W.
     n = len(p)
     nn = len(w)
 
-    # Safety check: the number of profits and weights must match.
     assert W >= 0
     if n != nn:
         raise Exception("n!=n")
 
-    # B[weight] = best profit achievable using exactly 'weight' capacity.
     B = np.zeros(W + 1)
 
-    # items[weight] stores which item indices were selected to achieve that profit.
     items = [[i for i in range(0)] for _ in range(W + 1)]
 
-    # Only continue if there is at least one item whose weight is not larger than W.
     if np.min(w) <= W:
-        # If a previous DP state was supplied, start from it instead of zero.
         if len(B_in) > 0 and i_skip >= 0:
             B = B_in.copy()
 
-        # Determine the iteration range for the DP.
         i_max = n
         if sorted_two_piece:
             i_max = i_skip + 2
 
-        # Process items one by one.
         for k in range(i_skip + 1, i_max):
-            # Skip zero-profit items.
             if p[k] == 0:
                 continue
 
-            # A = previous DP state before item k is considered.
             A = B.copy()
             items_tmp = items.copy()
 
-            # For each capacity value, check whether adding item k improves the solution.
             for weight in range(w[k], W + 1):
-                # If the current item fits and improves the previous best, update it.
                 if A[weight - w[k]] + p[k] > A[weight]:
-                    # Update the best profit for this capacity.
                     B[weight] = A[weight - w[k]] + p[k]
 
-                    # If requested, keep the actual selected items for reconstruction.
                     if return_items:
                         items[weight] = items_tmp[weight - w[k]] + [k]
 
-    # Return the DP table and the selected-item reconstruction data.
     return B, items
 
 
@@ -313,20 +254,15 @@ def generate_random_instance(
     tuple[numpy.ndarray, numpy.ndarray]
         Profit vector ``\bar p`` and weight vector ``u``.
     """
-    # Generate synthetic knapsack data for benchmarking and testing.
-    # Each item gets a profit and a weight.
     b_random = np.zeros(k_random, dtype=int)
     p_random = np.zeros(k_random, dtype=int)
 
     if inversely_cor:
-        # Create a profit value for each item, then set its weight slightly larger.
-        # This creates a strong inverse relationship between profit and weight.
         p_random = np.random.rand(k_random) * R
         p_random = np.ceil(p_random)
         for j in range(k_random):
             b_random[j] = p_random[j] + int(R / 10)
     else:
-        # Alternative generation pattern for more irregular examples.
         b_random = np.random.rand(k_random) * (R - 1)
         b_random = 1 + (np.ceil(b_random)).astype(int)
         for j in range(k_random):
@@ -369,34 +305,25 @@ def for_loop_method_all_p(
     tuple[numpy.ndarray, list[list[int]]]
         Minimum-weight table ``zeta_f(P,k)`` and reconstructions.
     """
-    # Profit-based DP:
-    # B[profit] = minimal total weight needed to achieve exactly `profit`.
-    # This is dual to the weight-based DP where state is capacity.
     n = len(p)
     B = np.full(P + 1, sys.maxsize)
     items = [[i for i in range(0)] for _ in range(P + 1)]
 
     if len(B_in) > 0 and i_skip >= 0:
-        # Optional warm-start from a previous DP layer/state.
         B = B_in.copy()
 
     i_max = n
     if sorted_two_piece:
-        # Optional restricted scan used by two-piece optimization shortcuts.
         i_max = i_skip + 2
 
     B[0] = int(0)
     for k in range(i_skip + 1, i_max):
-        # Skip non-contributing items.
         if p[k] == 0:
             continue
         A = B.copy()
         items_tmp = items.copy()
 
         for profit in range(p[k], P + 1):
-            # Transition:
-            # If profit-p[k] is reachable, then taking item k creates a candidate
-            # solution for `profit` with added weight w[k].
             if A[profit - p[k]] < sys.maxsize and A[profit - p[k]] + w[k] < A[profit]:
                 B[profit] = A[profit - p[k]] + w[k]
                 if return_items:
@@ -442,24 +369,12 @@ def knapsack(w: np.ndarray, p: np.ndarray, W: int) -> float:
     new code should call one of the explicitly weight- or profit-indexed DP
     routines above.
     """
-    """Compatibility helper used by the legacy benchmark main block.
-
-    Returns the best DP value at capacity W using the active weight-based DP
-    implementation.
-    """
-    # Route legacy `knapsack(...)` call-sites to the active DP implementation.
     B, _ = for_loop_method_all_w(np.array(p), np.array(w), int(W), np.array([], dtype=float), int(-1), False)
     return B[int(W)]
 
 
 
 if __name__ == "__main__":
-
-    """
-    Code below used to track run times for the for loop method vs the scip method
-    and can also be used to track run times for the f method vs g method (profit vs weight)
-    """
-
     st = time.time()
 
     fin_g = []
@@ -482,18 +397,18 @@ if __name__ == "__main__":
         k_random = 50 #500 # number of items
         n = k_random
         w_random = []
-        
+
 
         p_random = np.random.rand(k_random)
         p_random *= R
         p_random = np.array(np.rint(p_random), dtype='i')
 
-        
+
 
         for j in range(k_random):
             adjusted_weight_j = p_random[j] + int(R/10)
             w_random.append(adjusted_weight_j)
-        
+
 
         W_random = int(20/101 * sum(w_random))
         P_max = P_upper_bound(w_random, p_random, W_random)

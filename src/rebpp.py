@@ -22,13 +22,7 @@ print(f"Active Conda Environment Name: {env_name}")
 
 
 from copy import deepcopy
-#from numpy.core.numeric import Infinity
-from pyomo.common.timing import report_timing
-from pyomo.scripting.interface import pyomo_callback
-from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
-#from sympy import false
 from gurobipy import GRB
-#from rbptest import alpha
 from sos2 import sos2, convex_pw_knapsack_dp, sos2_gurobi
 import numpy as np
 import pandas as pd
@@ -39,65 +33,37 @@ import time
 from numba import jit
 from typing import Any, List, Tuple
 
-from functools import partial
-##########################################################################
-VALIDINEQ2 = False    # inequalities added dynamically
-VALIDINEQ = True #True #True   # m inequalities added in init
-SYMBREAK = True #True #True      # symmetry breaking by ordering bins
-ITEMSYMBREAK = False #True #True         # symmetry breaking by ordering equal sized bins (currently looks only at nominal size, assuming proportional deviation)
-BRANCH_AND_CUT = False #True #True
+VALIDINEQ2 = False
+VALIDINEQ = True
+SYMBREAK = True
+ITEMSYMBREAK = False
+BRANCH_AND_CUT = False
 NO_VAR_GEN = False
-#
 SOS_SOLVE = False
-MIP_START_OR_HINT = 2 # 2- hint, 1- Start, 0 - none
-############################################################
+MIP_START_OR_HINT = 2
+
 VIOL_TOL = 1e-3
 INT_TOL = 1e-1
-GAPVAL1 = 0.2 #0.05 #4  # optimality gap to finish 1st phase of algorithm
-GAPVAL2 = 0.01 #0.01 #0.05 # final optimality gap
+GAPVAL1 = 0.2
+GAPVAL2 = 0.01
 TIME_LIMIT = 7200
 MAX_CUTS = math.inf
-#################################
 DEBUG_CB = False
 DEBUG_CB_0 = False
 DEBUG_CB_2 = False
 GUROBI_OUTPUT = False
 DEBUG_INEQ_NOVAR = False
-BOUND_OVERFILL = math.inf  # 2*BINSIZE
+BOUND_OVERFILL = math.inf
 EPS = 1e-6
-#import os
-#"../data/testinstance.csv"
-#os.chdir("c:\\Users\\goldbergno\\My Documents\\GitRepos\\binpacking_summer_project\\src")
-# "../data/testinstance.csv" #
 
-FILENAME = (# "../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V06.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V06.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V07.csv")
-# #"../data/testinstance.csv"
-#"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_012Patients.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_04W_071Patients.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_032Patients.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V04.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V08.csv")
-#"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
-"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv")
-#".."../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
-#"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-#"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
-#"../data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad.csv"
-#gapVal = 0.1
-
-Omega_val = 971 #0#971#1195#721#477#283#0 #283#477 #283#971#1195#721#1195 #0#1195 #477 #721 #971 #477 #1195 #1833 #6692 #3551 #6692 #3551 #2523 #1833  # 3000 #240
-BINSIZE = 540#600 #540 #480 #540 #2  # 540
+FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv"
+Omega_val = 971
+BINSIZE = 540
 
 __DEBUG = False
 __DEBUG_0 = False
 __DEBUG_2 = False
 __DEBUG_3 = False
-#3600
-
 abspath = os.path.abspath(__file__)
 dname = os.path.dirname(abspath)
 os.chdir(dname)
@@ -111,7 +77,6 @@ def getVars(model: Any) -> Any:
     """Return active Pyomo variables from a model instance."""
     return model.component_data_objects(pe.Var,active=True)
 
-# robust extensible bin packing problem model init
 def rebppinit_pyomo(
     a_bar: np.ndarray,
     a_hat: np.ndarray,
@@ -129,7 +94,6 @@ def rebppinit_pyomo(
 
     b = np.diff(a_bar)
     min_abar_diff = b[b > 0].min()
-    #mdl
     model = pe.ConcreteModel()
     pe.ConcreteModel.getVal = classmethod(getVal)
     pe.ConcreteModel.getVars = classmethod(getVars)
@@ -142,8 +106,6 @@ def rebppinit_pyomo(
     model.c = c
     model.Omega = Omega
     model.theta = pe.Var(domain=pe.NonNegativeReals)
-    #mdl.fover = pe.Var(mdl.J,domain=pe.NonNegativeReals)
-
     model.y = pe.Var(model.J,domain=pe.Binary)
     model.z = pe.Var(model.I,model.J,domain=pe.Binary)
 
@@ -153,14 +115,17 @@ def rebppinit_pyomo(
     model.alpha = pe.Var(model.J,pe.NonNegativeIntegers,domain=pe.NonNegativeReals,bounds=(0,BOUND_OVERFILL),dense=False)
 
     def assignRule(mdl,i):
+        # Eq. (1b): each item receives exactly one bin assignment.
         return sum(mdl.z[i, j] for j in mdl.J) == 1
     model.assignCons = pe.Constraint(model.I,rule=assignRule)
 
     def capacityRule(mdl, j):
+        # Eq. (1d): nominal load plus scenario deviation is extensible.
         return sum(a_bar[i]*mdl.z[i, j] for i in mdl.I) <= V*mdl.y[j]+mdl.alpha_bar[j]
     model.capacityCons = pe.Constraint(model.J, rule=capacityRule)
 
     def indRule(mdl,i,j):
+        # Eq. (1c): assignments imply an opened bin.
         return mdl.z[i,j] <= mdl.y[j]
     model.indCons = pe.Constraint(model.I,model.J,rule=indRule)
 
@@ -201,8 +166,10 @@ def rebppinit_pyomo(
         if VALIDINEQ:  # add only if not generating these dynamically
             model.otLB = pe.Constraint(model.J[:-1],rule=overtimeLB)
 
+    # Eq. (1e): aggregate overtime is bounded by Theta.
     model.objCons = pe.Constraint(expr = sum(c[j]*model.alpha_bar[j] for j in model.J)<= model.theta)
 
+    # Eq. (1a): minimize opened bins plus worst-case overtime.
     model.obj = pe.Objective(expr = (sum(model.y[j] for j in model.J) + model.theta), sense=pe.minimize)
     ##mdl.obj = pe.Objective(expr = (sum(mdl.y[j] for j in mdl.J) + sum(c[j]*mdl.alpha_bar[j] for j in mdl.J) + mdl.theta), sense=pe.minimize)
     model.scuts = pe.ConstraintList()
@@ -244,26 +211,18 @@ def update_rebpp_pyomo(
     no_var: bool = NO_VAR_GEN,
 ) -> Tuple[Any, Any]:
     r"""Add scenario-indexed constraints to the finite master model."""
-    
-    """
-    used to recieve new model and alph
-    """
     if __DEBUG_2:
         print("scenario_num: ", scenario_num)
     m = len(a_bar)
-    #mdl.scenarios = mdl.scenarios | pe.Set(initialize=[scenario_num])
     mdl.sn = scenario_num
     if no_var:
         add_cut(mdl,a_bar,a)
     else:
         for j in mdl.J:
             cons = mdl.scuts.add(sum(mdl.z[i, j] * (a_bar[i] + a[i]) for i in mdl.I) <= V * mdl.y[j] + mdl.alpha[j, scenario_num])
-            #opt.add_constraint(cons)
         con = mdl.scuts.add(sum(c[j] * mdl.alpha[j, scenario_num] for j in mdl.J) <= mdl.theta)
-        #opt.add_constraint(con)
     return mdl, mdl.alpha
 
-#@jit(nopython=False)
 def convex_pw_knapsack_wrapper(
     p: np.ndarray,
     b: np.ndarray,
@@ -285,25 +244,23 @@ def convex_pw_knapsack_wrapper(
     p_star = None
     items = []
     i_max = -1 #None
-    # if we use the scip version
-
-    m,nn = p.shape # n = rows // m = columns
+    m, nn = p.shape
     p_star = 0
     p_star_k = []
     pp = np.array(p)
-    bb = np.array(b)
+                # itemsConstant.add(i)  not needed
     constant = 0
-    #itemsConstant = set([])
     for i in range(m):
         if not np.all(p[i, j] <= p[i, j + 1] for j in range(nn - 1)):
             print(p, b)
             raise ValueError("nonconvex p")
         if not np.all(b[i, j] <= b[i, j + 1] for j in range(nn - 1)):
-            print(p, b)
+        # itemsConstant = itemsConstant.difference([i_max])
+        # items = itemsConstant.union(items)
             raise ValueError("nonconvex b")
         if p[i, 0] > INT_TOL:  #and not sos:
             pp[i,2] = max(pp[i,2]-p[i,0],0)
-            pp[i,0] = 0
+                # print("p_star sos = ", p_star, " items=",items, " i_max=", i_max, " p_star_2=", p_star_2, " i_max_2=", i_max_2, " constant=", constant)
             pp[i,1] = 0
             constant += p[i,0]
 
@@ -630,7 +587,7 @@ def solve_instance(
             print(z_old)
             model_old.scuts.pprint()
             #model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)   ## for debugging
-            print('***')            
+            print('***')
             model.scuts.pprint()
             raise Exception("breaking..")
 

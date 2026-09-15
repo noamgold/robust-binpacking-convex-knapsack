@@ -189,7 +189,6 @@ def p_eval(b_row: np.ndarray, p_row: np.ndarray, w: float) -> float:
     float
         Interpolated value ``\hat p_j(w)``.
     """
-    """Evaluate a piecewise-linear function at coordinate w by interpolation."""
     # b_row: sorted x breakpoints, p_row: corresponding y values.
     b_max = b_row[-1]
     if w < 0:
@@ -229,7 +228,6 @@ def sort_instance_by_slopes(
     tuple[numpy.ndarray, numpy.ndarray, numpy.ndarray]
         Sorted matrices and the permutation mapping sorted to original rows.
     """
-    """Sort items by descending slope on the last piece to guide DP order."""
     # Ordering by marginal slope can improve practical DP behavior on convex instances.
     # Last-segment slope is used as a practical priority signal.
     dp_db = (p[:, 2] - p[:, 1]) / (b[:, 2] - b[:, 1])
@@ -262,7 +260,6 @@ def convex_pw_knapsack_dp(
     tuple[float, numpy.ndarray, int]
         Optimal value, selected full-item indices, and fractional pivot index.
     """
-    """DP solver for convex piecewise knapsack (capacity-based state)."""
     if __DEBUG_2:
         print("convex_pw_knapsack_dp...")
 
@@ -379,7 +376,6 @@ def convex_pw_knapsack_dp_profit(
     tuple[float, numpy.ndarray, int]
         Optimal value, selected full-item indices, and fractional pivot index.
     """
-    """DP solver for convex piecewise knapsack (profit-based state)."""
     if __DEBUG_2:
         print("convex_pw_knapsack_dp...")
 
@@ -483,7 +479,6 @@ def convex_pw_knapsack_dp_profit(
 
 
 def read_instance(i: int) -> Tuple[np.ndarray, np.ndarray]:
-    """Read one historical text instance by numeric identifier."""
     """Read a legacy benchmark instance from disk.
 
     This helper is kept for backward compatibility with the previous
@@ -495,8 +490,7 @@ def read_instance(i: int) -> Tuple[np.ndarray, np.ndarray]:
 
 
 def write_instance(p_random: np.ndarray, b_random: np.ndarray, i: int) -> str:
-    """Write a generated instance and return its output filename."""
-    """Write a generated instance to disk for reproducible runs.
+    """Write a generated instance to disk and return its filename.
 
     The output format matches the project's historical data layout.
     """
@@ -592,7 +586,7 @@ if __name__ == "__main__":
             print(k_random, " & ", f"{sum(sos2g_time_process) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_process):.2f}", " & ", f"{sum(convex_time_process) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
             print(k_random, " & ", f"{sum(sos2g_time_elapsed) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT-1]), " & ",f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT-1]))
             print(k_random," & ", R, " & ", f"{np.mean(sos2g_time_elapsed_wotl):.2f}", " & ", f"{max(sos2g_time_elapsed_wotl):.2f}", " & ", f"{np.mean(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT - 1]), " & ", f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT - 1]))
-         
+
             combined_data = np.column_stack((sos2g_time_elapsed,convex_time_elapsed))
             np.savetxt('times_' + str(k_random) + "_" + str(R) + ".csv",combined_data,delimiter=',',fmt='%10.2f',header='GurobiTime,DPTime')
 # print(p_eval(b,p,6,2))
