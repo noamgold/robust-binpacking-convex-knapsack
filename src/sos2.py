@@ -6,24 +6,6 @@ capacity ``Omega``.  ``sos2_gurobi`` implements formulation (16): ``t[i, j]``
 are convex-combination variables and the SOS2 constraint enforces adjacency.
 The DP routines implement Algorithm 2 and Appendix A, returning the value
 ``P*`` of the two-piece convex knapsack separation problem.
-
-This file intentionally keeps only active project logic:
-- SOS2 model solved with Gurobi via Pyomo,
-- piecewise linear value evaluation,
-- slope-based ordering helper,
-- convex piecewise knapsack DP variants.
-
-Removed legacy pieces:
-- pyscipopt SOS2 model implementation,
-- benchmark and timing loops inside main,
-- debug scaffolding and unrelated experimental code.
-
-Notes on imports
-- ``numba.typed`` is not required in the current active implementation because
-    list reconstruction is handled with plain Python lists under Numba-compatible
-    patterns used in this codebase.
-- ``math``, ``random`` and ``pandas`` are kept available for small local
-    experimentation and instance I/O workflows.
 """
 
 from json.encoder import INFINITY
@@ -97,50 +79,44 @@ def sos2_gurobi(
     nb, mb = b.shape
     assert m == mb and n == nb
 
-    # Build Pyomo model index sets.
-    # I = items, J = piecewise breakpoints for each item.
+    # Formulation (16): I indexes convex functions and J indexes breakpoints.
     md = pe.ConcreteModel()
     md.I = pe.RangeSet(0, n - 1)
     md.J = pe.RangeSet(0, m - 1)
 
-    # Continuous SOS2 variables for convex combination on each item's breakpoints.
     md.t = pe.Var(md.I, md.J, domain=pe.NonNegativeReals)
 
-    # Objective: maximize piecewise profit.
+    # Eq. (16a): maximize the convex-combination representation of total profit.
     md.obj = pe.Objective(
         expr=sum(p[i, j] * md.t[i, j] for i in md.I for j in md.J),
         sense=pe.maximize,
     )
 
-    # Global capacity constraint.
+    # Eq. (16b): enforce the global uncertainty budget Omega.
     md.c = pe.Constraint(expr=sum(b[i, j] * md.t[i, j] for i in md.I for j in md.J) <= B)
 
-    # For each item, coefficients sum to 1 (convex combination requirement).
     def rule_sossum(md, i):
+        # Eq. (16c): each function is represented by a convex combination.
         return sum(md.t[i, j] for j in md.J) == 1
 
     md.sossum = pe.Constraint(md.I, rule=rule_sossum)
 
-    # Enforce SOS2 adjacency structure per item (at most two adjacent active breakpoints).
     def rule_mysos(md, i):
+        # Eq. (16d): restrict support to adjacent breakpoints.
         return [md.t[i, j] for j in md.J]
 
     md.mysos = pe.SOSConstraint(md.I, rule=rule_mysos, sos=2)
 
-    # Solve with Gurobi.
-    # Note: GRB is imported explicitly for environment consistency and
-    # compatibility with existing project expectations around Gurobi usage.
+    # Solve formulation (16) with Gurobi's SOS2 branching implementation.
     opt = pe.SolverFactory("gurobi_direct")
     opt.options["TimeLimit"] = TIMELIMIT
 
-    # Measure both wall-clock and CPU time for diagnostics.
     grb_start_process = time.process_time()
     grb_start_elapsed = time.time()
     results = opt.solve(md, tee=False)
     grb_end_process = time.process_time()
     grb_end_elapsed = time.time()
 
-    # Read solved objective value and decode the selected structure.
     objVal = md.obj()
     fin = []
     i_max = -1

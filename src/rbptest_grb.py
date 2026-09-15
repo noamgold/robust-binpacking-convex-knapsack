@@ -6,7 +6,7 @@ The experiment uses the paper's benchmark protocol: instances with 20, 30,
 and overtime coefficient ``c = 1.5/V``.  The input files are under
 ``data/{30,60,90}`` and are consumed by ``read_instance``.
 
-This script is intentionally a long-running experiment, not a unit test.
+The driver records the runtime statistics reported in the REBP experiments.
 """
 
 from rebpp import rebppinit_pyomo, print_sol, solve_instance

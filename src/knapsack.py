@@ -7,35 +7,8 @@ Notation from the paper:
     implement the recurrences for ``Pi_f(U,k)`` or ``zeta_f(P,k)`` after the
     excluded item and breakpoint convention have been encoded by the caller.
 
-The module supplies the pseudo-polynomial building blocks used in Algorithm 2
-and Appendix A of the paper.  It does not solve the REBP master problem.
-
-This module intentionally keeps only the functions that are relevant to the
-current project:
-- upper-bound estimation,
-- weight-based DP,
-- profit-based DP,
-- synthetic instance generation.
-
-Legacy bin-packing, pyscipopt, and benchmark code were removed because they are
-not part of the active optimization workflow.
-
-Removed legacy functions and reasons:
-- RandomBinPacking(): test-only random instance generator for bin packing; not used
-  by the current knapsack/SOS2 solver workflow.
-- BinPackingExample(): educational bin-packing example; unrelated to the active
-  optimization problem and not part of the project scope.
-- FFD(): First Fit Decreasing heuristic is a bin-packing heuristic, not an exact
-  knapsack algorithm; removed to keep the module focused on exact DP methods.
-- bpp(): pyscipopt-based bin-packing model; removed because the project requires
-  a Gurobi/Pyomo-only workflow.
-- solveBinPacking(): legacy experimental solver around the removed bin-packing
-  formulation; removed as part of the cleanup.
-- min_weight(), p_star(), f(), p_opt(): recursive or exploratory methods used in
-  earlier experiments; they are not part of the current production logic and were
-  removed to keep the codebase clear and maintainable.
-- knapsack(): old pyscipopt knapsack solver; removed because the project targets
-  Gurobi/Pyomo optimization and DP-based formulations instead.
+The module supplies the pseudo-polynomial building blocks used by Algorithm 2
+and Appendix A of the paper. It does not solve the REBP master problem.
 """
 
 import math
@@ -84,14 +57,19 @@ def P_upper_bound(
     Algorithm 2 of the paper. The typed empty-array default avoids a Numba
     fingerprinting failure caused by a Python list default.
     """
+    # curr_total_weight = total weight currently packed into the knapsack
+    # p_bar = running upper-bound estimate of attainable profit
     curr_total_weight = 0
     p_bar = 0
 
+    # n = number of items in the instance
     n = len(p)
 
-    w_array = w
-    p_array = p
+    # Use the original arrays for readability. These are 1D vectors: one value per item.
+    w_array = w  # np.array(w)
+    p_array = p  # np.array(p)
 
+    # The fractional relaxation supplies a finite upper bound for P_max.
     if len(indexes) < n:
         ratios = np.divide(p_array, w_array)
 
@@ -128,6 +106,7 @@ def for_loop_method_all_w_save_all(
     at most ``U`` using the first ``k`` items. The table is mutated in place.
     """
     n = len(p)
+    # Populate all prefix states of the capacity-indexed recurrence Pi_f(U, k).
     for k in range(0, n):
         if k >= 1:
             B_all[k, :] = B_all[k - 1, :].copy()
@@ -151,6 +130,7 @@ def for_loop_method_all_p_save_all(
     profit ``P`` with the first ``k`` items. The table is mutated in place.
     """
     n = len(p)
+    # Populate all prefix states of the profit-indexed recurrence zeta_f(P, k).
     B_all[0, 0] = 0
 
     for k in range(n):
@@ -210,6 +190,7 @@ def for_loop_method_all_w(
 
     items = [[i for i in range(0)] for _ in range(W + 1)]
 
+    # Reuse the backbone table when evaluating an excluded pivot item f.
     if np.min(w) <= W:
         if len(B_in) > 0 and i_skip >= 0:
             B = B_in.copy()
@@ -225,6 +206,7 @@ def for_loop_method_all_w(
             A = B.copy()
             items_tmp = items.copy()
 
+            # The 0/1 transition reads the previous layer before updating B.
             for weight in range(w[k], W + 1):
                 if A[weight - w[k]] + p[k] > A[weight]:
                     B[weight] = A[weight - w[k]] + p[k]
@@ -317,6 +299,7 @@ def for_loop_method_all_p(
         i_max = i_skip + 2
 
     B[0] = int(0)
+    # Store minimum weight for each attainable profit state.
     for k in range(i_skip + 1, i_max):
         if p[k] == 0:
             continue
