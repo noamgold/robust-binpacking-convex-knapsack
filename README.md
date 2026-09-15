@@ -132,8 +132,8 @@ The model has infinitely many scenario-indexed constraints because $U_\Omega$ is
 
 1. Start with the nominal scenario $a=0$.
 2. Solve the finite-scenario master problem with Pyomo and Gurobi.
-3. Given the current assignment $(y^{*},z^{*},\theta^{*})$, solve the separation problem.
-4. If the separation value $\eta^{*}$ violates $\eta^{*}\le\theta^{*}$, generate the worst scenario $a^{*}$.
+3. Given the current assignment $(y^{\ast},z^{\ast},\theta^{\ast})$, solve the separation problem.
+4. If the separation value $\eta^{\ast}$ violates $\eta^{\ast}\le\theta^{\ast}$, generate the worst scenario $a^{\ast}$.
 5. Add the scenario-dependent variables and constraints to the master.
 6. Repeat until no violating scenario remains.
 
@@ -142,11 +142,11 @@ The main control routine is `solve_instance` in `src/rebpp.py`. The master const
 The separation objective is Proposition 1 of the paper:
 
 $$
-\eta^{*} = \max_{a\in U_\Omega}
-\sum_j c_j(\sum_i z^{*}_{ij}(\bar a_i+a_i)-Vy^{*}_j)_+.
+\eta^{\ast} = \max_{a\in U_\Omega}
+\sum_j c_j(\sum_i z^{\ast}_{ij}(\bar a_i+a_i)-Vy^{\ast}_j)_+.
 $$
 
-A scenario is needed whenever $\eta^{*}>\theta^{*}$, up to the implementation tolerance `VIOL_TOL`.
+A scenario is needed whenever $\eta^{\ast}>\theta^{\ast}$, up to the implementation tolerance `VIOL_TOL`.
 
 ### Symmetry breaking
 
@@ -169,7 +169,7 @@ These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
 For an integral assignment, each bin becomes one convex piecewise-linear function. The paper's Observation 1 defines
 
 $$
-\gamma_j = c_j(\sum_{i:z^{*}_{ij}=1}\bar a_i-V),
+\gamma_j = c_j(\sum_{i:z^{\ast}_{ij}=1}\bar a_i-V),
 \qquad
 \beta_j=c_j,
 $$
@@ -177,7 +177,7 @@ $$
 and
 
 $$
-u_j=\sum_{i:z^{*}_{ij}=1}\hat a_i.
+u_j=\sum_{i:z^{\ast}_{ij}=1}\hat a_i.
 $$
 
 The separation problem becomes the two-piece convex knapsack (2PCK):
@@ -232,7 +232,7 @@ $$
 The pivot item $f$ is the possible fractional item identified by the extreme-point structure of 2PCK. The solution is evaluated as
 
 $$
-P^{*} = \max_{f,P}\{P+\hat p_f(\Omega-\zeta_f(P,n))\},
+P^{\ast} = \max_{f,P}\{P+\hat p_f(\Omega-\zeta_f(P,n))\},
 $$
 
 where $\hat p_f$ is the piecewise value of the pivot item.
@@ -256,7 +256,7 @@ $$
 and its final evaluation follows Appendix A, Eq. (18):
 
 $$
-P^{*}=\max_{f}\max_{U\in[\Omega]}
+P^{\ast}=\max_{f}\max_{U\in[\Omega]}
 \{\Pi_f(U,n)+\hat p_f(\Omega-U)\}.
 $$
 
