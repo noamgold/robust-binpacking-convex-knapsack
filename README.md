@@ -33,7 +33,7 @@ The paper studies **robust extensible bin packing (REBP)**. An item represents a
 The uncertainty set is the continuous budgeted set
 
 $$
-U_\Omega = \{a \in \mathbb{R}^m : 0 \le a_i \le \hat a_i,\quad \sum_{i=1}^m a_i \le \Omega\}.
+U_\Omega = \{a \in \mathbb{R}^{m} : 0 \le a_i \le \hat a_i,\quad \sum_{i=1}^m a_i \le \Omega\}.
 $$
 
 The uncertainty budget $\Omega$ limits the total deviation that an adversarial scenario can distribute across all assigned items. This is the key robust-optimization distinction from a nominal bin-packing model.
@@ -49,7 +49,7 @@ where $(x)_+ = \max\{x,0\}$. The REBP objective is
 $$
 \min_{B_1,\ldots,B_n}
 \max_{a\in U_\Omega}
-\sum_{j=1}^n f(B_j,a).
+\sum_{j=1}^{n} f(B_j,a).
 $$
 
 The model therefore trades off the number of opened shifts against worst-case overtime.
@@ -132,8 +132,8 @@ The model has infinitely many scenario-indexed constraints because $U_\Omega$ is
 
 1. Start with the nominal scenario $a=0$.
 2. Solve the finite-scenario master problem with Pyomo and Gurobi.
-3. Given the current assignment $(y^*,z^*,\theta^*)$, solve the separation problem.
-4. If the separation value $\eta^*$ violates $\eta^*\le\theta^*$, generate the worst scenario $a^*$.
+3. Given the current assignment $(y^{*},z^{*},\theta^{*})$, solve the separation problem.
+4. If the separation value $\eta^{*}$ violates $\eta^{*}\le\theta^{*}$, generate the worst scenario $a^{*}$.
 5. Add the scenario-dependent variables and constraints to the master.
 6. Repeat until no violating scenario remains.
 
@@ -142,11 +142,11 @@ The main control routine is `solve_instance` in `src/rebpp.py`. The master const
 The separation objective is Proposition 1 of the paper:
 
 $$
-\eta^* = \max_{a\in U_\Omega}
-\sum_j c_j(\sum_i z^*_{ij}(\bar a_i+a_i)-Vy^*_j)_+.
+\eta^{*} = \max_{a\in U_\Omega}
+\sum_j c_j(\sum_i z^{*}_{ij}(\bar a_i+a_i)-Vy^{*}_j)_+.
 $$
 
-A scenario is needed whenever $\eta^*>\theta^*$, up to the implementation tolerance `VIOL_TOL`.
+A scenario is needed whenever $\eta^{*}>\theta^{*}$, up to the implementation tolerance `VIOL_TOL`.
 
 ### Symmetry breaking
 
@@ -169,7 +169,7 @@ These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
 For an integral assignment, each bin becomes one convex piecewise-linear function. The paper's Observation 1 defines
 
 $$
-\gamma_j = c_j(\sum_{i:z^*_{ij}=1}\bar a_i-V),
+\gamma_j = c_j(\sum_{i:z^{*}_{ij}=1}\bar a_i-V),
 \qquad
 \beta_j=c_j,
 $$
@@ -177,7 +177,7 @@ $$
 and
 
 $$
-u_j=\sum_{i:z^*_{ij}=1}\hat a_i.
+u_j=\sum_{i:z^{*}_{ij}=1}\hat a_i.
 $$
 
 The separation problem becomes the two-piece convex knapsack (2PCK):
@@ -232,7 +232,7 @@ $$
 The pivot item $f$ is the possible fractional item identified by the extreme-point structure of 2PCK. The solution is evaluated as
 
 $$
-P^* = \max_{f,P}\{P+\hat p_f(\Omega-\zeta_f(P,n))\},
+P^{*} = \max_{f,P}\{P+\hat p_f(\Omega-\zeta_f(P,n))\},
 $$
 
 where $\hat p_f$ is the piecewise value of the pivot item.
@@ -256,7 +256,7 @@ $$
 and its final evaluation follows Appendix A, Eq. (18):
 
 $$
-P^*=\max_{f}\max_{U\in[\Omega]}
+P^{*}=\max_{f}\max_{U\in[\Omega]}
 \{\Pi_f(U,n)+\hat p_f(\Omega-U)\}.
 $$
 
@@ -310,7 +310,7 @@ The paper compares:
 - DP (Algorithm 2): `convex_pw_knapsack_dp_profit`;
 - $\Omega$-DP: `convex_pw_knapsack_dp`.
 
-The experiment block in `src/sos2.py` generates inverse-correlated instances with $R\in\{10^2,10^3,10^4\}$ and thirty capacity settings. It records SOS and DP elapsed times and prints aggregate summaries. The paper reports that DP is generally faster and more stable, particularly as the SOS2 formulation becomes difficult for Gurobi.
+The experiment block in `src/sos2.py` generates inverse-correlated instances with $R\in\{10^{2},10^{3},10^{4}\}$ and thirty capacity settings. It records SOS and DP elapsed times and prints aggregate summaries. The paper reports that DP is generally faster and more stable, particularly as the SOS2 formulation becomes difficult for Gurobi.
 
 The validation guard compares the SOS objective with the DP objective. A message such as
 
