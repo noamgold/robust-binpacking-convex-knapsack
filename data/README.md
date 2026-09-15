@@ -1,0 +1,328 @@
+# Robust Extensible Bin Packing and a Convex Knapsack Problem
+
+Research-code documentation for the paper:
+
+> Noam Goldberg, Michael Poss, and Yariv N. Marmor, *Robust Extensible Bin Packing and a Convex Knapsack Problem*, August 10, 2026.
+
+This document is intentionally located beside the input data. It is the canonical guide to the data, the mathematical model, the implementation, and the computational experiments in this repository.
+
+## 1. Research Scope
+
+The paper studies **robust extensible bin packing (REBP)**. An item represents an appointment or surgery with nominal duration $\bar a_i$ and maximum duration deviation $\hat a_i$. Items are assigned to work shifts, represented as bins. Each bin has a nominal capacity $V$, but overtime is permitted and charged linearly.
+
+The uncertainty set is the continuous budgeted set
+
+$$
+U_\Omega = \left\{a \in \mathbb{R}^m : 0 \le a_i \le \hat a_i,\quad \sum_{i=1}^m a_i \le \Omega\right\}.
+$$
+
+The uncertainty budget $\Omega$ limits the total deviation that an adversarial scenario can distribute across all assigned items. This is the key robust-optimization distinction from a nominal bin-packing model.
+
+For a bin $j$, assignment set $B_j$, and scenario $a \in U_\Omega$, the paper defines the cost
+
+$$
+f(B_j,a) = \mathbf{1}_{\{B_j \ne \varnothing\}} + c_j\left(\sum_{i\in B_j}(\bar a_i+a_i)-V\right)_+,
+$$
+
+where $(x)_+ = \max\{x,0\}$. The REBP objective is
+
+$$
+\min_{B_1,\ldots,B_n}
+\max_{a\in U_\Omega}
+\sum_{j=1}^n f(B_j,a).
+$$
+
+The model therefore trades off the number of opened shifts against worst-case overtime.
+
+## 2. Mathematical Model and Code Variables
+
+The assignment formulation in the paper uses:
+
+| Paper symbol | Code representation | Meaning |
+|---|---|---|
+| $\bar a_i$ | `a_bar[i]` | Nominal duration of item $i$ |
+| $\hat a_i$ | `a_hat[i]` | Maximum deviation of item $i$ |
+| $V$ | `V` | Nominal capacity of each bin/shift |
+| $\Omega$ | `Omega` | Total deviation budget |
+| $c_j$ | `c[j]` | Overtime cost per unit for bin $j$ |
+| $y_j$ | `model.y[j]` | Binary variable indicating that bin $j$ is open |
+| $z_{ij}$ | `model.z[i, j]` | Binary assignment of item $i$ to bin $j$ |
+| $\theta$ | `model.theta` | Upper bound on total worst-case overtime |
+| $\alpha_j(a)$ | `model.alpha[j, scenario]` | Scenario-specific overtime in bin $j$ |
+| $\widetilde U_\Omega$ | Scenario constraints in `rebpp.py` | Finite scenario set accumulated by generation |
+
+The Pyomo master in `src/rebpp.py` implements the main structural constraints:
+
+$$
+\sum_j z_{ij}=1 \quad \forall i,
+$$
+
+$$
+z_{ij}\le y_j \quad \forall i,j,
+$$
+
+$$
+\sum_i z_{ij}(\bar a_i+a_i)\le Vy_j+\alpha_j(a) \quad \forall j,a,
+$$
+
+and
+
+$$
+\sum_j c_j\alpha_j(a)\le\theta \quad \forall a.
+$$
+
+The objective is $\min \sum_j y_j+\theta$. These are formulation (1) in the paper.
+
+## 3. Algorithm 1: Row-and-Column Generation
+
+The model has infinitely many scenario-indexed constraints because $U_\Omega$ is continuous. The implementation follows the paper's row-and-column generation procedure:
+
+1. Start with the nominal scenario $a=0$.
+2. Solve the finite-scenario master problem with Pyomo and Gurobi.
+3. Given the current assignment $(y^*,z^*,\theta^*)$, solve the separation problem.
+4. If the separation value $\eta^*$ violates $\eta^*\le\theta^*$, generate the worst scenario $a^*$.
+5. Add the scenario-dependent variables and constraints to the master.
+6. Repeat until no violating scenario remains.
+
+The main control routine is `solve_instance` in `src/rebpp.py`. The master construction is `rebppinit_pyomo`; scenario updates are handled by `update_rebpp_pyomo`; and separation data are assembled by `create_sos_instance` and `convex_pw_knapsack_wrapper`.
+
+The separation objective is Proposition 1 of the paper:
+
+$$
+\eta^* = \max_{a\in U_\Omega}
+\sum_j c_j\left(\sum_i z^*_{ij}(\bar a_i+a_i)-Vy^*_j\right)_+.
+$$
+
+A scenario is needed whenever $\eta^*>\theta^*$, up to the implementation tolerance `VIOL_TOL`.
+
+### Symmetry breaking
+
+When overtime costs are identical, the paper uses the bin-ordering inequalities
+
+$$
+y_1\ge y_2\ge\cdots\ge y_n,
+$$
+
+and the additional lower bound
+
+$$
+(1-y_{j+1})c\left(\sum_i\bar a_i+\Omega-jV\right)\le\theta.
+$$
+
+These are controlled by `SYMBREAK` and `VALIDINEQ` in `src/rebpp.py`.
+
+## 4. Separation as Two-Piece Convex Knapsack
+
+For an integral assignment, each bin becomes one convex piecewise-linear function. The paper's Observation 1 defines
+
+$$
+\gamma_j = c_j\left(\sum_{i:z^*_{ij}=1}\bar a_i-V\right),
+\qquad
+\beta_j=c_j,
+$$
+
+and
+
+$$
+u_j=\sum_{i:z^*_{ij}=1}\hat a_i.
+$$
+
+The separation problem becomes the two-piece convex knapsack (2PCK):
+
+$$
+\max_{x}
+\left\{\sum_j p_j(x_j):
+\sum_j x_j\le\Omega,\ 0\le x_j\le u_j\right\},
+$$
+
+with
+
+$$
+p_j(x_j)=(\gamma_j+\beta_jx_j)_+.
+$$
+
+In `src/rebpp.py`, `create_sos_instance` constructs the three breakpoints for each bin: the zero point, the point at which overtime begins, and the full-deviation point. The resulting matrices `p` and `b` are passed to `src/sos2.py`.
+
+## 5. `src/sos2.py`: SOS2 and DP Solvers
+
+This module contains two independent solution paths for 2PCK.
+
+### 5.1 SOS2/Gurobi formulation
+
+The function `sos2_gurobi(p, b, B)` implements the paper's formulation (16). For every item/bin $j$, `t[j,k]` are convex-combination variables over breakpoints $k$:
+
+$$
+\sum_k t_{jk}=1,
+$$
+
+$$
+\sum_{j,k} b_{jk}t_{jk}\le\Omega,
+$$
+
+with an SOS2 restriction allowing only adjacent breakpoints to be active. The objective is
+
+$$
+\max\sum_{j,k}p_{jk}t_{jk}.
+$$
+
+This route uses Pyomo and Gurobi. It is a mathematically direct MIP representation of the convex functions, but its running time may be sensitive to branch-and-bound behavior.
+
+### 5.2 Profit-indexed DP: Algorithm 2
+
+`convex_pw_knapsack_dp_profit` implements the paper's Algorithm 2. It uses the binary-knapsack state
+
+$$
+\zeta_f(P,k)=\text{minimum weight of a subset of }[k]\setminus\{f\}
+\text{ whose profit is at least }P.
+$$
+
+The pivot item $f$ is the possible fractional item identified by the extreme-point structure of 2PCK. The solution is evaluated as
+
+$$
+P^* = \max_{f,P}\left\{P+\hat p_f\left(\Omega-\zeta_f(P,n)\right)\right\},
+$$
+
+where $\hat p_f$ is the piecewise value of the pivot item.
+
+The paper proves that sorting by non-increasing second-segment slope allows reuse of DP states and reduces the running time to
+
+$$
+O\left(n(P_{\max}+\log n)\right),
+$$
+
+rather than recomputing a full table for every excluded item.
+
+### 5.3 Weight-indexed DP: Appendix A
+
+`convex_pw_knapsack_dp` implements the $\Omega$-DP variant. Its state is
+
+$$
+\Pi_f(U,k)=\text{maximum binary-knapsack profit using weight at most }U,
+$$
+
+and its final evaluation follows Appendix A, Eq. (18):
+
+$$
+P^*=\max_{f}\max_{U\in[\Omega]}
+\left\{\Pi_f(U,n)+\hat p_f(\Omega-U)\right\}.
+$$
+
+This version is especially relevant inside REBP because the REBP instance uses fractional overtime costs, making the capacity-indexed formulation natural in the separation routine.
+
+## 6. `src/knapsack.py`: Binary-Knapsack Primitives
+
+This module provides the lower-level recurrences used by both convex-knapsack variants:
+
+- `for_loop_method_all_w`: capacity-indexed DP corresponding to $\Pi_f(U,k)$.
+- `for_loop_method_all_p`: profit-indexed DP corresponding to $\zeta_f(P,k)$.
+- `*_save_all`: table-building variants used for state reuse.
+- `P_upper_bound`: a fractional-knapsack upper bound used to choose a finite $P_{\max}$.
+- `generate_random_instance`: the inverse-correlation generator used in the computational experiment.
+
+The module is not a second REBP implementation. It is the exact-DP support layer for `sos2.py`.
+
+## 7. `src/rbptest_grb.py`: REBP Runtime Experiments
+
+`rbptest_grb.py` reproduces the REBP benchmark protocol described in Section 5.2 of the paper. For each input instance it sets
+
+$$
+\hat a_i=0.4\bar a_i,
+\qquad
+\Omega=0.1\sum_i\hat a_i,
+$$
+
+$$
+V=\frac{1}{8}\sum_i(\bar a_i+\hat a_i),
+\qquad
+c=\frac{1.5}{V},
+$$
+
+and the number of candidate bins to
+
+$$
+n=\left\lceil\frac{2(\sum_i\bar a_i+\Omega)}{V}\right\rceil.
+$$
+
+The files in `data/30`, `data/60`, and `data/90` are the Song et al. benchmark families. The script reports elapsed runtime, master runtime, number of scenario-generation iterations, number of bins, and time-limit counts.
+
+This script is intentionally a long-running experiment. It is not a smoke test.
+
+## 8. Mapping Code to Paper Results
+
+### Table 1: Convex-knapsack timing
+
+The paper compares:
+
+- SOS: `sos2_gurobi`;
+- DP (Algorithm 2): `convex_pw_knapsack_dp_profit`;
+- $\Omega$-DP: `convex_pw_knapsack_dp`.
+
+The experiment block in `src/sos2.py` generates inverse-correlated instances with $R\in\{10^2,10^3,10^4\}$ and thirty capacity settings. It records SOS and DP elapsed times and prints aggregate summaries. The paper reports that DP is generally faster and more stable, particularly as the SOS2 formulation becomes difficult for Gurobi.
+
+The validation guard compares the SOS objective with the DP objective. A message such as
+
+```text
+Exception: different obj vals
+```
+
+means that the two implementations produced different objective values on a generated instance. It is an algorithmic correctness discrepancy requiring investigation; it is not evidence that Gurobi or Python failed to install.
+
+### Tables 2 and 3: REBP scenario-generation timing
+
+These tables correspond to `src/rbptest_grb.py` and `rebpp.solve_instance`. Table 2 uses the easier Song et al. instances with smaller item sizes; Table 3 uses harder instances with $a_{\max}=100$. The reported columns are generated by the timing arrays in `rbptest_grb.py`: average and maximum elapsed time, averages including time-limit runs, master-solve time, iteration counts, and time-limit counts.
+
+The paper reports that symmetry breaking and inequality (5) can substantially reduce runtime, especially on harder instances. In code, the relevant controls are `SYMBREAK`, `VALIDINEQ`, and `ITEMSYMBREAK`; `GAPVAL1` and `GAPVAL2` correspond to the two-stage master optimality gaps $\tau_0$ and $\tau_1$ in Algorithm 1.
+
+### Table 4: Surgery case study
+
+Table 4 compares actual, nominal, and robust schedules for Weeks 3, 7, and 8 under two prediction models, V1 and V2. The quantities are utilization and overtime summaries, evaluated over daily schedules. The model inputs are the case-study vectors $\bar a$, $\hat a$, the shift length $V$, and percentile-derived $\Omega$ values (477, 721, and 971).
+
+The robust schedules in the paper generally improve utilization and reduce worst-case overtime relative to the actual and nominal schedules. The code path for this study is the `__main__` block of `src/rebpp.py`, which reads a case-study CSV, solves `solve_instance`, and writes a schedule CSV.
+
+**Current branch limitation:** the `Dep13300with_a_ahat...` case-study files were deliberately removed from `TEST` in commit `e9eeb27`, so Table 4 cannot be regenerated from this checkout until those inputs are restored. The benchmark data for Sections 5.1 and 5.2 remain available under `data/30`, `data/60`, and `data/90`.
+
+## 9. Installation and Execution
+
+The repository uses Python 3.12 and the local virtual environment `.venv`. Required packages are NumPy, Pandas, Numba, Pyomo, `gurobipy`, PySCIPOpt, and `packaging`. Gurobi also requires a valid license.
+
+From the repository root:
+
+```bash
+.venv/bin/python -m py_compile src/knapsack.py src/sos2.py src/rebpp.py src/rbptest_grb.py
+```
+
+Core import check:
+
+```bash
+cd src
+../.venv/bin/python -c "import knapsack, sos2, rebpp; print('core imports passed')"
+```
+
+Run the available benchmark experiment:
+
+```bash
+.venv/bin/python src/sos2.py
+.venv/bin/python src/rbptest_grb.py
+```
+
+Run the case-study entry point only after restoring compatible case-study input files:
+
+```bash
+.venv/bin/python src/rebpp.py
+```
+
+Numba compiles kernels on first use, and Gurobi runtime depends on hardware, solver version, license configuration, and parameter settings. Do not compare timings across machines without recording these conditions.
+
+## 10. Data Provenance
+
+- `data/30`, `data/60`, and `data/90` contain instances retrieved from the KU Leuven RMAP instance collection and used in the Song et al. benchmark protocol.
+- The healthcare case-study data were originally associated with the SEE Lab source cited in `data/readme` and the paper.
+- The current `TEST` branch no longer contains the `Dep13300with_a_ahat...` files. Their removal is intentional and recorded in Git history.
+
+## 11. Citation
+
+Goldberg, N., Poss, M., and Marmor, Y. N. (2026). *Robust Extensible Bin Packing and a Convex Knapsack Problem*. August 10, 2026.
+
+For the benchmark family, also cite:
+
+Song, G., Kowalczyk, D., and Leus, R. (2018). The robust machine availability problem—bin packing under uncertainty. *IISE Transactions*, 50(11), 997–1012.
