@@ -33,14 +33,18 @@ import time
 from numba import jit
 from typing import Any, List, Tuple
 
-VALIDINEQ2 = False
-VALIDINEQ = True
-SYMBREAK = True
-ITEMSYMBREAK = False
+VALIDINEQ2 = False  # inequalities added dynamically
+VALIDINEQ = True  # m inequalities added during initialization
+SYMBREAK = True  # symmetry breaking by ordering bins
+ITEMSYMBREAK = False  # symmetry breaking by ordering equal-sized bins
 BRANCH_AND_CUT = False
 NO_VAR_GEN = False
+#
 SOS_SOLVE = False
-MIP_START_OR_HINT = 2
+MIP_START_OR_HINT = 2  # 2: hint, 1: start, 0: none
+
+# Solver tolerances and algorithm controls.
+# GAPVAL1 controls the optimality gap for the first phase; GAPVAL2 is final.
 
 VIOL_TOL = 1e-3
 INT_TOL = 1e-1
@@ -48,12 +52,13 @@ GAPVAL1 = 0.2
 GAPVAL2 = 0.01
 TIME_LIMIT = 7200
 MAX_CUTS = math.inf
+#################################
 DEBUG_CB = False
 DEBUG_CB_0 = False
 DEBUG_CB_2 = False
 GUROBI_OUTPUT = False
 DEBUG_INEQ_NOVAR = False
-BOUND_OVERFILL = math.inf
+BOUND_OVERFILL = math.inf  # 2*BINSIZE
 EPS = 1e-6
 
 FILENAME = "../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv"
@@ -248,6 +253,7 @@ def convex_pw_knapsack_wrapper(
     p_star = 0
     p_star_k = []
     pp = np.array(p)
+    bb = np.array(b)
                 # itemsConstant.add(i)  not needed
     constant = 0
     for i in range(m):
@@ -261,6 +267,7 @@ def convex_pw_knapsack_wrapper(
         if p[i, 0] > INT_TOL:  #and not sos:
             pp[i,2] = max(pp[i,2]-p[i,0],0)
                 # print("p_star sos = ", p_star, " items=",items, " i_max=", i_max, " p_star_2=", p_star_2, " i_max_2=", i_max_2, " constant=", constant)
+            pp[i,0] = 0
             pp[i,1] = 0
             constant += p[i,0]
 

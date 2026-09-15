@@ -18,15 +18,26 @@ import statistics as stat
 import pyomo.environ as pe
 from pyomo.opt import SolverStatus, TerminationCondition
 
+# Legacy debug switch retained from the main benchmark driver.
+__DEBUG = False
+# The benchmark can be run for the 20-, 30-, 60-, or 90-item families.
 NUM_ITEMS = 90 #20 #90
-num_items = [20]
+num_items = [20] #[20,30,60,90] #[30,60,90] #[60,90]
 TIME_LIMIT = 7200
+#3600
 devProp = 0.4
-c_const = 1.5
+c_const = 1.5 #2 #1.5
 
 num_tests = 10
-rob_level_mult = 0.1
+
+# Five robustness levels are considered: 0%, 5%, 10%, 15%, or 20% of sum(a_hat).
+rob_level_mult = 0.1 #0 #0.05
+# Four deadlines are generated as fractions of the worst-case total duration:
+# 1/4, 1/6, 1/8, and 1/10.
 V_mult = 1/8
+#NZ_TOl = 1e-7
+#GAPVAL1 = 0.4
+#GAPVAL2 = 5e-2
 
 
 
@@ -68,10 +79,12 @@ for sz in num_items:
         else:
             a_bar = read_instance(instNum,sz,min(NUM_ITEMS,sz))
 
+        # The maximum processing-time deviation is devProp times the nominal duration.
         a_hat = (np.ceil(devProp*a_bar)).astype(int)
         a_bar = np.asarray(a_bar, dtype='int')
         Omega = int(math.ceil(rob_level_mult*sum(a_hat)))
         V = int(V_mult*(sum(a_hat)+sum(a_bar)))
+        # Overtime cost per unit duration, normalized by the deadline V.
         c_mult = c_const / V
 
         n = len(a_bar)
