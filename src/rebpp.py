@@ -64,7 +64,7 @@ FILENAME = (# "../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_
 #"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V04.csv")
 #"../rambam.data/Dep13300with_a_ahat_test_withlabe_V2_HighLoad_01W_V08.csv")
 #"../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
-"data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv")
+"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V12.csv")
 #".."../rambam.data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_01W_V09.csv")
 #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"
 #"../data/Dep13300with_a_ahat_test_withlabe_V1_HighLoad_02W_032Patients.csv"

@@ -30,15 +30,15 @@ V_mult = 1/8
 
 
 def read_instance(i,sz,ss):
-    fileName = "data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
-    #fileName = "data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
+    fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
+    #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
     print("opening: ", fileName)
     test_data = pd.read_csv(fileName,skiprows=[1])
-    #test_data = pd.read_csv("data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
+    #test_data = pd.read_csv("../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt",skiprows=[1])
     a_bar = np.sort(test_data.iloc[range(ss),0])
     return a_bar
 
-#test_data = pd.read_csv("data/ma30.csv")
+#test_data = pd.read_csv("../data/ma30.csv")
 for sz in num_items: # [30, 60,90]:
     runTimes = []
     masterTimes = []
@@ -47,7 +47,7 @@ for sz in num_items: # [30, 60,90]:
     runTimesWoTL = []
     masterTimesWoTL = []
     for instNum in range(num_tests):
-        #test_data = pd.read_csv("data/ma30.csv")
+        #test_data = pd.read_csv("../data/ma30.csv")
         #a_bar = test_data["a_bar_" + str(instNum)]
         # The processing-time deviation is 0.2 times the processing time, rounded to the nearest higher integer;
         a_bar = []
