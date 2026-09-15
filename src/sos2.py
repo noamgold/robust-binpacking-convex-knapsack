@@ -1,4 +1,11 @@
-"""SOS2 optimization module focused on Gurobi/Pyomo and core DP integrations.
+"""SOS2 and dynamic-programming solvers for the two-piece convex knapsack.
+
+For paper notation, ``p[i, :]`` contains the breakpoint profits and ``b[i, :]``
+contains the corresponding weights for item/bin ``i``.  ``B`` is the global
+capacity ``Omega``.  ``sos2_gurobi`` implements formulation (16): ``t[i, j]``
+are convex-combination variables and the SOS2 constraint enforces adjacency.
+The DP routines implement Algorithm 2 and Appendix A, returning the value
+``P*`` of the two-piece convex knapsack separation problem.
 
 This file intentionally keeps only active project logic:
 - SOS2 model solved with Gurobi via Pyomo,
@@ -61,9 +68,9 @@ def sos2(p, b, B):
 def sos2_gurobi(p, b, B):
     """Solve the SOS2 model with Gurobi through Pyomo.
 
-    p: profit matrix of shape (n, m)
-    b: breakpoint/weight matrix of shape (n, m)
-    B: total capacity bound
+    ``p``: profit matrix of shape ``(n, m)``.
+    ``b``: breakpoint/weight matrix of shape ``(n, m)``.
+    ``B``: total capacity bound, corresponding to ``Omega``.
     """
     # Input matrices are expected as n items x m breakpoints.
     n, m = p.shape
@@ -148,6 +155,7 @@ def sos2_gurobi(p, b, B):
 
 @jit(nopython=True)
 def p_eval(b_row, p_row, w):
+    """Evaluate one piecewise-linear profit function at weight ``w``."""
     """Evaluate a piecewise-linear function at coordinate w by interpolation."""
     # b_row: sorted x breakpoints, p_row: corresponding y values.
     b_max = b_row[-1]
@@ -173,6 +181,10 @@ def p_eval(b_row, p_row, w):
 
 @jit(cache=True, nopython=True)
 def sort_instance_by_slopes(p, b):
+    """Sort convex-knapsack items by non-increasing second-segment slope.
+
+    This is the ordering assumed by Eq. (12) and Algorithm 2.
+    """
     """Sort items by descending slope on the last piece to guide DP order."""
     # Ordering by marginal slope can improve practical DP behavior on convex instances.
     # Last-segment slope is used as a practical priority signal.
@@ -184,6 +196,10 @@ def sort_instance_by_slopes(p, b):
 
 @jit(nopython=True)
 def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
+    """Solve the convex knapsack with a weight-indexed DP.
+
+    This is the Omega-DP variant described in Appendix A, Eq. (18).
+    """
     """DP solver for convex piecewise knapsack (capacity-based state)."""
     if __DEBUG_2:
         print("convex_pw_knapsack_dp...")
@@ -278,6 +294,11 @@ def convex_pw_knapsack_dp(p, b, W, y_intercept_nonzero=False):
 
 @jit(nopython=True)
 def convex_pw_knapsack_dp_profit(p, b, W, y_intercept_nonzero=False):
+    """Solve the two-piece convex knapsack with the profit-indexed DP.
+
+    This is Algorithm 2, using the ``zeta`` tables from Eq. (10) and the
+    one-fractional-item representation from Observation 2.
+    """
     """DP solver for convex piecewise knapsack (profit-based state)."""
     if __DEBUG_2:
         print("convex_pw_knapsack_dp...")

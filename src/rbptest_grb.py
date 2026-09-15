@@ -1,3 +1,14 @@
+"""Runtime benchmark for the REBP algorithm on Song et al. instances.
+
+The experiment uses the paper's benchmark protocol: instances with 20, 30,
+60, or 90 items, deviation ``a_hat = 0.4 a_bar``, uncertainty budget
+``Omega = 0.1 sum(a_hat)``, capacity ``V = (sum(a_bar) + sum(a_hat))/8``,
+and overtime coefficient ``c = 1.5/V``.  The input files are under
+``data/{30,60,90}`` and are consumed by ``read_instance``.
+
+This script is intentionally a long-running experiment, not a unit test.
+"""
+
 #from pyscipopt import Model, quicksum, SCIP_PARAMSETTING
 #from knapsack import rebppinit, update_rebpp
 from rebpp import rebppinit_pyomo, print_sol, solve_instance
@@ -30,6 +41,7 @@ V_mult = 1/8
 
 
 def read_instance(i,sz,ss):
+    """Load benchmark instance ``i`` for size ``sz`` and return ``a_bar``."""
     fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,100)_"+ str(i) +".txt"
     #fileName = "../data/" + str(sz) + "/" + str(sz) + "_(1,20)_"+ str(i) +".txt"
     print("opening: ", fileName)

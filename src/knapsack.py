@@ -1,4 +1,14 @@
-"""Core knapsack DP utilities used by the SOS2 formulation.
+"""Binary-knapsack dynamic programs used by the convex-knapsack algorithms.
+
+Notation from the paper:
+    ``w[i]`` is the integer weight ``u_i``; ``p[i]`` is the profit
+    ``\bar p_i``; and ``W`` is the capacity ``Omega`` for weight-indexed DP
+    or ``P``/``Pmax`` for profit-indexed DP.  The routines returning ``B``
+    implement the recurrences for ``Pi_f(U,k)`` or ``zeta_f(P,k)`` after the
+    excluded item and breakpoint convention have been encoded by the caller.
+
+The module supplies the pseudo-polynomial building blocks used in Algorithm 2
+and Appendix A of the paper.  It does not solve the REBP master problem.
 
 This module intentionally keeps only the functions that are relevant to the
 current project:
@@ -44,6 +54,12 @@ np.random.seed(0)
 # compute upper bound based on relaxation and optional decreasing ratio ordering
 @jit(nopython=True)
 def P_upper_bound(w, p, W, indexes=[]):
+    """Return a fractional/greedy upper bound on binary-knapsack profit.
+
+    Here ``w`` and ``p`` are the binary-knapsack weights and profits and ``W``
+    is the capacity.  The bound is used to limit the profit-indexed state
+    space ``Pmax`` in the convex-knapsack DP.
+    """
     # curr_total_weight = total weight currently packed into the knapsack
     # p_bar = running upper-bound estimate of attainable profit
     curr_total_weight = 0
@@ -105,6 +121,7 @@ def P_upper_bound(w, p, W, indexes=[]):
 
 @jit(nopython=True)
 def for_loop_method_all_w_save_all(p, w, W, B_all):
+    """Build weight-indexed DP tables for all item-prefix states."""
     # This DP table stores, for every capacity value, the best profit seen so far.
     # B_all[k, weight] = best profit after processing the first k+1 items and using exactly
     # 'weight' capacity.
@@ -131,6 +148,7 @@ def for_loop_method_all_w_save_all(p, w, W, B_all):
 
 @jit(nopython=True)
 def for_loop_method_all_p_save_all(p, w, Pmax, B_all):
+    """Build profit-indexed minimum-weight DP tables up to ``Pmax``."""
     # This version is profit-based, not capacity-based.
     # B_all[k, profit] = minimum weight needed to achieve exactly 'profit'
     # after processing the first k+1 items.
@@ -156,6 +174,10 @@ def for_loop_method_all_p_save_all(p, w, Pmax, B_all):
 
 @jit(nopython=True)
 def for_loop_method_all_w(p, w, W, B_in=np.array([]), i_skip=int(-1), return_items=True, sorted_two_piece=False):
+    """Solve binary knapsack by capacity, optionally excluding one item.
+
+    The returned value is the implementation of ``Pi_f(W,k)`` from Appendix A.
+    """
     # This is the main capacity-based DP function.
     # It computes the best profit achievable for each total weight value from 0 to W.
     n = len(p)
@@ -236,6 +258,10 @@ def generate_random_instance(k_random, R, inversely_cor=True):
 
 @jit(nopython=True)
 def for_loop_method_all_p(p, w, P, B_in=np.array([], dtype=np.int64), i_skip=int(-1), return_items=True, sorted_two_piece=False):
+    """Solve binary knapsack by profit using minimum required weight.
+
+    This is the implementation of the ``zeta_f(P,k)`` recurrence in Eq. (10).
+    """
     # Profit-based DP:
     # B[profit] = minimal total weight needed to achieve exactly `profit`.
     # This is dual to the weight-based DP where state is capacity.

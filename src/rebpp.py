@@ -1,3 +1,20 @@
+r"""Robust extensible bin-packing (REBP) master and separation workflow.
+
+Paper-to-code notation:
+    ``a_bar`` is the nominal duration vector ``\bar a``; ``a_hat`` is the
+    deviation vector ``\hat a``; ``V`` is the shift capacity; ``Omega`` is the
+    budget uncertainty parameter; ``c`` contains overtime costs; ``y`` and
+    ``z`` are the master bin-opening and assignment variables; and ``theta``
+    is the worst-case overtime objective component.  ``solve_instance``
+    implements Algorithm 1 (row-and-column generation), while
+    ``convex_pw_knapsack_wrapper`` calls the two-piece convex-knapsack
+    separation method from ``sos2.py``.
+
+The Pyomo model corresponds to formulation (1).  Generated scenarios are
+added through ``add_cut``/``update_rebpp_pyomo`` until the separation value
+``eta*`` is within ``VIOL_TOL`` of ``theta``.
+"""
+
 import os
 import sys
 env_name = os.environ.get('CONDA_DEFAULT_ENV')
@@ -93,6 +110,11 @@ def getVars(model):
 
 # robust extensible bin packing problem model init
 def rebppinit_pyomo(a_bar, a_hat, V, c, Omega):
+    r"""Create the finite-scenario Pyomo master for formulation (1).
+
+    The arrays correspond to ``\bar a``, ``\hat a``, and the fixed model
+    parameters in the paper; ``c`` supplies the per-bin overtime costs.
+    """
     m = len(c)
     n = len(a_bar)
 
@@ -446,6 +468,11 @@ def create_sos_instance(a_bar,a_hat,V,c,model, Z=None):
     return p,b, ZZ
 
 def solve_instance(a_bar, a_hat, V, c, Omega, timelimit = TIME_LIMIT):
+    """Run row-and-column generation until no violated scenario remains.
+
+    Returns assignment and timing statistics used by the case-study and
+    benchmark scripts.
+    """
     n = len(a_bar)
     m = len(c) #int(math.ceil(2 * (sum(a_bar) + Omega) / V))
     scenario_num = 0
