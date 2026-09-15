@@ -4,7 +4,7 @@ Research-code documentation for the paper:
 
 > Noam Goldberg, Michael Poss, and Yariv N. Marmor, *Robust Extensible Bin Packing and a Convex Knapsack Problem*, August 10, 2026.
 
-This root-level README is the canonical guide to the data, the mathematical model, the implementation, and the computational experiments in this repository.
+
 
 ## Abstract / Overview
 
