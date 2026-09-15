@@ -4,7 +4,7 @@ Research-code documentation for the paper:
 
 > Noam Goldberg, Michael Poss, and Yariv N. Marmor, *Robust Extensible Bin Packing and a Convex Knapsack Problem*, August 10, 2026.
 
-This document is intentionally located beside the input data. It is the canonical guide to the data, the mathematical model, the implementation, and the computational experiments in this repository.
+This root-level README is the canonical guide to the data, the mathematical model, the implementation, and the computational experiments in this repository.
 
 ## Abstract / Overview
 
@@ -64,7 +64,7 @@ src/
 	rbptest_grb.py    REBP runtime benchmark driver
 data/
 	30/, 60/, 90/    Song et al. benchmark instance families
-	README.md         This canonical data and experiment documentation
+	README.md         Canonical repository documentation
 	...               Auxiliary benchmark and case-study resources
 ```
 
@@ -384,7 +384,7 @@ Numba compiles kernels on first use, and Gurobi runtime depends on hardware, sol
 ## 12. Data Provenance
 
 - `data/30`, `data/60`, and `data/90` contain instances retrieved from the KU Leuven RMAP instance collection and used in the Song et al. benchmark protocol.
-- The healthcare case-study data were originally associated with the SEE Lab source cited in `data/readme` and the paper.
+- The healthcare case-study data were originally associated with the SEE Lab source cited in the paper.
 - The current `TEST` branch no longer contains the `Dep13300with_a_ahat...` files. Their removal is intentional and recorded in Git history.
 
 ## 13. Citation
