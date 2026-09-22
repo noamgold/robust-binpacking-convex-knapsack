@@ -23,7 +23,7 @@ print(f"Active Conda Environment Name: {env_name}")
 
 from copy import deepcopy
 from gurobipy import GRB
-from sos2 import sos2, convex_pw_knapsack_dp, sos2_gurobi
+from sos2 import sos2, convex_pw_knapsack_omega_dp, sos2_gurobi
 import numpy as np
 import pandas as pd
 import pyomo.environ as pe
@@ -274,7 +274,7 @@ def convex_pw_knapsack_wrapper(
             #itemsConstant.add(i)  not needed
     if sos:
         if __DEBUG_3:
-            p_star_k, items_k, i_max_k = convex_pw_knapsack_dp(pp, bb, Omega, False)  # true
+            p_star_k, items_k, i_max_k = convex_pw_knapsack_omega_dp(pp, bb, Omega, False)  # true
             print("p_star knapsack = ", p_star_k, " items_k=", items_k, " i_max_k=", i_max_k, " constant=", constant)
         _star, items, i_max, _, _ = sos2_gurobi(pp, bb, Omega)
         if __DEBUG_0:
@@ -282,7 +282,7 @@ def convex_pw_knapsack_wrapper(
 
     else:
         if Omega > 0:
-            p_star, items, i_max = convex_pw_knapsack_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
+            p_star, items, i_max = convex_pw_knapsack_omega_dp(pp,bb,Omega) #,True) # true since y intercept is nonzero
     #itemsConstant = itemsConstant.difference([i_max])
     #items = itemsConstant.union(items)
     fullDevSum = 0

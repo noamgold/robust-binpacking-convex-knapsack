@@ -213,13 +213,13 @@ def sort_instance_by_slopes(
 
 
 @jit(nopython=True)
-def convex_pw_knapsack_dp(
+def convex_pw_knapsack_omega_dp(
     p: np.ndarray,
     b: np.ndarray,
     W: int,
     y_intercept_nonzero: bool = False,
 ) -> Tuple[float, np.ndarray, int]:
-    r"""Solve 2PCK with the weight-indexed DP from Appendix A.
+    r"""Solve 2PCK with the weight-indexed Omega-DP from Appendix A.
 
     This is the Omega-DP variant described in Appendix A, Eq. (18).
     Parameters
@@ -237,7 +237,7 @@ def convex_pw_knapsack_dp(
         Optimal value, selected full-item indices, and fractional pivot index.
     """
     if __DEBUG_2:
-        print("convex_pw_knapsack_dp...")
+        print("convex_pw_knapsack_omega_dp...")
 
     n, m = p.shape
     nb, mb = b.shape
@@ -293,14 +293,11 @@ def convex_pw_knapsack_dp(
 
         profit_array[i] = pi
         w_max = W
-        w_min = max(W - b_array[i], 1)
+        w_min = max(W - b_array[i], 0)
 
-        # If all other full-item weights exceed capacity, only minimal merge window is valid.
-        if min(np.delete(b_array, i)) > W:
-            w_max = 1
-
-        # Merge DP value from other items with interpolated value of item i.
-        for w in range(w_min, w_max):
+        # Appendix A maximizes over U in [0, Omega], including both endpoints.
+        # U = 0 is required when the pivot receives the full uncertainty budget.
+        for w in range(w_min, w_max + 1):
             merged_val = B[w] + p_eval(b[i, :], p[i, :], W - w)
             if merged_val > max_val:
                 max_val = merged_val
@@ -308,7 +305,7 @@ def convex_pw_knapsack_dp(
                 i_max = i
 
     if __DEBUG_2:
-        print("convex_pw_knapsack_dp i_max=", i_max)
+        print("convex_pw_knapsack_omega_dp i_max=", i_max)
 
     # Reconstruct selected non-pivot items from the final DP pass.
     p_vec = profit_array.copy()
@@ -328,7 +325,7 @@ def convex_pw_knapsack_dp(
 
 
 @jit(nopython=True)
-def convex_pw_knapsack_dp_profit(
+def convex_pw_knapsack_profit_dp(
     p: np.ndarray,
     b: np.ndarray,
     W: int,
@@ -353,7 +350,7 @@ def convex_pw_knapsack_dp_profit(
         Optimal value, selected full-item indices, and fractional pivot index.
     """
     if __DEBUG_2:
-        print("convex_pw_knapsack_dp...")
+        print("convex_pw_knapsack_profit_dp...")
 
     n, m = p.shape
     nb, mb = b.shape
@@ -435,7 +432,7 @@ def convex_pw_knapsack_dp_profit(
                 i_max = i
 
     if __DEBUG_2:
-        print("convex_pw_knapsack_dp i_max=", i_max)
+        print("convex_pw_knapsack_profit_dp i_max=", i_max)
 
     # Final reconstruction of non-pivot items using profit-state DP.
     p_vec = profit_array.copy()
@@ -476,93 +473,89 @@ def write_instance(p_random: np.ndarray, b_random: np.ndarray, i: int) -> str:
     df.to_csv(fileName)
     return fileName
 
+
 if __name__ == "__main__":
     random.seed(101)
-    for k_random in [50,100,250,500]: #, 250]: #[50, 100, 150, 200, 250, 300# ]:
-        for R in [100,1000,10000]:
-#    for R in [1000]: #[1000,10000]:
-#        for k_random in [50,100,250,500]: #, 250]: #[50, 100, 150, 200, 250, 300]:
-            #sos2_time_process = []
-            #sos2_time_elapsed = []
+    for k_random in [50, 100, 250, 500]:
+        for R in [100, 1000, 10000]:
             sos2g_time_process = []
             sos2g_time_elapsed = []
-            sos2g_time_elapsed_wotl = []  # excluding time limits
-            convex_time_process = []
-            convex_time_elapsed = []
-            fin_sos2 = []
+            sos2g_time_elapsed_wotl = []
+            profit_time_process = []
+            profit_time_elapsed = []
+            omega_time_process = []
+            omega_time_elapsed = []
             fin_sos2g = []
-            fin_convex = []
+            fin_profit = []
+            fin_omega = []
 
-            for i in range(1,31):
-    #for i in range(1, 9):
-                b = np.empty((0,3), int) #np.int64)
-                p = np.empty((0,3), int) #np.int64)
-                p_random,b_random = generate_random_instance(k_random,R,True)
-                write_instance(p_random,b_random,i)
-                #b_random, p_random  = read_instance(i)
-                k_random = len(b_random)
+            for i in range(1, 31):
+                b = np.empty((0, 3), int)
+                p = np.empty((0, 3), int)
+                p_random, b_random = generate_random_instance(k_random, R, True)
+                write_instance(p_random, b_random, i)
 
                 for p_val in p_random:
-                    #p = np.append(p, np.array([[0, 0, p_val+1e-3*random.random()]]), axis=0)
                     p = np.append(p, np.array([[0, 0, p_val]]), axis=0)
-
                 for b_val in b_random:
-                    #b = np.append(b, np.array([[0, random.randint(0,b_val), b_val]]), axis = 0)
-                    b = np.append(b, np.array([[0, b_val-1, b_val]]), axis = 0)
+                    b = np.append(b, np.array([[0, b_val - 1, b_val]]), axis=0)
 
-                        #print(for_loop_method_all_w(p, b, 63,-1,[i for i in range(1)], [[i for i in range(1)] for _ in range(1)], -1))
-                W = int(math.ceil((5+i*3)/101 * sum(b_random)))
+                W = int(math.ceil((5 + i * 3) / 101 * sum(b_random)))
 
-                #p, b = sort_instance_by_slopes(p, b)  # sort instance for linear speed up
-
-                #(sos2_val, sos_items, sos_imax, solve_time, cpu_time) = 0, 0, 0 , 0, 0
-                        #(sos2_val,sos_items,sos_imax, solve_time, cpu_time) = sos2(p,b,W)
-                #if __DEBUG_2:
-                #    print("sos2 objVal=", sos2_val)
-                #sos2_time_process.append(cpu_time)
-                #sos2_time_elapsed.append(solve_time)
-
-        ##################################
-                (sos2g_val,sosg_items,sosg_imax, solve_time, cpu_time) = sos2_gurobi(p,b,W)
-                if __DEBUG_2:
-                    print("sos2 gurobi objVal=", sos2g_val, " sosg_imax=", sosg_imax)
-                    print(sosg_items)
+                sos2g_val, sosg_items, sosg_imax, solve_time, cpu_time = sos2_gurobi(p, b, W)
                 sos2g_time_process.append(cpu_time)
                 sos2g_time_elapsed.append(solve_time)
-                if solve_time <= TIMELIMIT-1:
+                if solve_time <= TIMELIMIT - 1:
                     sos2g_time_elapsed_wotl.append(solve_time)
                 print("i=", i, " sos time: ", solve_time)
-                sos2_val = sos2g_val
-        ##################################
 
-                convex_start_process = time.process_time()
-                convex_start_elapsed = time.time()
-                convex_val,items,imax = convex_pw_knapsack_dp_profit(p,b,W)
-                #convex_val,items,imax = convex_pw_knapsack_dp(p,b,W)
-                convex_end_process = time.process_time()
-                convex_end_elapsed = time.time()
-                convex_time_process.append(convex_end_process - convex_start_process)
-                convex_time_elapsed.append(convex_end_elapsed - convex_start_elapsed)
-                print("i=", i, " DP time: ", convex_end_elapsed - convex_start_elapsed)
+                profit_start_process = time.process_time()
+                profit_start_elapsed = time.time()
+                profit_val, profit_items, profit_imax = convex_pw_knapsack_profit_dp(p, b, W)
+                profit_time_process.append(time.process_time() - profit_start_process)
+                profit_time_elapsed.append(time.time() - profit_start_elapsed)
+                print("i=", i, " Profit-DP time: ", profit_time_elapsed[-1])
 
+                omega_start_process = time.process_time()
+                omega_start_elapsed = time.time()
+                omega_val, omega_items, omega_imax = convex_pw_knapsack_omega_dp(p, b, W)
+                omega_time_process.append(time.process_time() - omega_start_process)
+                omega_time_elapsed.append(time.time() - omega_start_elapsed)
+                print("i=", i, " Omega-DP time: ", omega_time_elapsed[-1])
 
-                if abs(sos2g_val-convex_val)/sos2g_val > 1e-4 and int(sos2g_time_elapsed[-1]) < 1800:
-                    print("ERR ! ................  sos2g objval: ", sos2g_val, " DP val: ", convex_val)
-                    print("W=", W, " sosg_imax=", sosg_imax, " imax=", imax, "items=", items, " sum(b other than imax)=", quicksum(b[items,-1]), " sum(p other than imax)=",quicksum(p[items,-1]), " t=", sosg_items)
-                    print("")
-                    raise Exception("different obj vals")
+                if int(solve_time) < TIMELIMIT:
+                    if abs(sos2g_val - profit_val) / sos2g_val > 1e-4:
+                        raise ValueError("Profit-DP objective differs from SOS2")
+                    if abs(sos2g_val - omega_val) / sos2g_val > 1e-4:
+                        raise ValueError("Omega-DP objective differs from SOS2")
 
-                fin_sos2.append(sos2_val)
                 fin_sos2g.append(sos2g_val)
-                fin_convex.append(convex_val)
+                fin_profit.append(profit_val)
+                fin_omega.append(omega_val)
 
-          #  print(k_random, " & ", f"{sum(sos2_time_process)/float(len(fin_sos2)):.2f}", " & ",  f"{max(sos2_time_process):.2f}" , " & ",  f"{sum(convex_time_process)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
-          #  print(k_random, " & ", f"{sum(sos2_time_elapsed)/float(len(fin_sos2)):.2f}", " & ", f"{max(sos2_time_elapsed):.2f}" , " & ", len([x for x in sos2_time_elapsed if x>TIMELIMIT-1]), " & ",  f"{sum(convex_time_elapsed)/float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x>TIMELIMIT-1]) )
+            print(
+                k_random, " & ", f"{sum(sos2g_time_process) / len(fin_sos2g):.2f}", " & ",
+                f"{max(sos2g_time_process):.2f}", " & ",
+                f"{sum(profit_time_process) / len(fin_profit):.2f}", " & ",
+                f"{max(profit_time_process):.2f}", " & ",
+                f"{sum(omega_time_process) / len(fin_omega):.2f}", " & ",
+                f"{max(omega_time_process):.2f}",
+            )
+            print(
+                k_random, " & ", R, " & ", f"{np.mean(sos2g_time_elapsed_wotl):.2f}", " & ",
+                f"{max(sos2g_time_elapsed_wotl):.2f}", " & ", f"{np.mean(sos2g_time_elapsed):.2f}", " & ",
+                len([value for value in sos2g_time_elapsed if value > TIMELIMIT - 1]), " & ",
+                f"{np.mean(profit_time_elapsed):.2f}", " & ", f"{max(profit_time_elapsed):.2f}", " & ",
+                len([value for value in profit_time_elapsed if value > TIMELIMIT - 1]), " & ",
+                f"{np.mean(omega_time_elapsed):.2f}", " & ", f"{max(omega_time_elapsed):.2f}", " & ",
+                len([value for value in omega_time_elapsed if value > TIMELIMIT - 1]),
+            )
 
-            print(k_random, " & ", f"{sum(sos2g_time_process) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_process):.2f}", " & ", f"{sum(convex_time_process) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_process):.2f}")
-            print(k_random, " & ", f"{sum(sos2g_time_elapsed) / float(len(fin_sos2g)):.2f}", " & ", f"{max(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT-1]), " & ",f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT-1]))
-            print(k_random," & ", R, " & ", f"{np.mean(sos2g_time_elapsed_wotl):.2f}", " & ", f"{max(sos2g_time_elapsed_wotl):.2f}", " & ", f"{np.mean(sos2g_time_elapsed):.2f}", " & ", len([x for x in sos2g_time_elapsed if x > TIMELIMIT - 1]), " & ", f"{sum(convex_time_elapsed) / float(len(fin_convex)):.2f}", " & ", f"{max(convex_time_elapsed):.2f}", " & ", len([x for x in convex_time_elapsed if x > TIMELIMIT - 1]))
-
-            combined_data = np.column_stack((sos2g_time_elapsed,convex_time_elapsed))
-            np.savetxt('times_' + str(k_random) + "_" + str(R) + ".csv",combined_data,delimiter=',',fmt='%10.2f',header='GurobiTime,DPTime')
-# print(p_eval(b,p,6,2))
+            combined_data = np.column_stack((sos2g_time_elapsed, profit_time_elapsed, omega_time_elapsed))
+            np.savetxt(
+                "times_" + str(k_random) + "_" + str(R) + ".csv",
+                combined_data,
+                delimiter=',',
+                fmt='%10.2f',
+                header='GurobiTime,ProfitDPTime,OmegaDPTime',
+            )
