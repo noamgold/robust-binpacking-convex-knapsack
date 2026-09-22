@@ -400,10 +400,11 @@ def convex_pw_knapsack_profit_dp(
             for_loop_method_all_p_save_all(profit_array, b_array, Pmax, B_all)
             B = B_all[n - 1, :].copy()
         else:
+            # Size the table by Pmax: the pivot scan below indexes B up to Pmax.
             B, _ = for_loop_method_all_p(
                 profit_array,
                 b_array,
-                Pmaxi,
+                Pmax,
                 B_all[max(skip_idx - 1, -1), :],
                 skip_idx,
                 False,
