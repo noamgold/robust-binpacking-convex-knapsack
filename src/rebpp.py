@@ -44,12 +44,13 @@ SOS_SOLVE = False
 MIP_START_OR_HINT = 2  # 2: hint, 1: start, 0: none
 
 # Solver tolerances and algorithm controls.
-# GAPVAL1 controls the optimality gap for the first phase; GAPVAL2 is final.
+# TAU0 and TAU1 are hard-coded paper parameters; change them manually to
+# reproduce the paper's alternative two-phase optimality-gap configurations.
 
 VIOL_TOL = 1e-3
 INT_TOL = 1e-1
-GAPVAL1 = 0.2
-GAPVAL2 = 0.01
+TAU0 = 0.2
+TAU1 = 0.01
 TIME_LIMIT = 7200
 MAX_CUTS = math.inf
 #################################
@@ -506,7 +507,7 @@ def solve_instance(
     model = rebppinit_pyomo(a_bar, a_hat, V, c,Omega)
     #model.Omega = Omega
 
-    print("solving.. Tau0=", GAPVAL1, " Tau1=", GAPVAL2, " Cuts: ", BRANCH_AND_CUT)
+    print("solving.. Tau0=", TAU0, " Tau1=", TAU1, " Cuts: ", BRANCH_AND_CUT)
     global opt
     opt.set_instance(model,symbolic_solver_labels=True)
 
@@ -521,7 +522,7 @@ def solve_instance(
         opt.options['DisplayInterval'] = 5000
         opt.set_callback(my_callback)
 
-    gapVal = GAPVAL1
+    gapVal = TAU0
     start = time.time()
 
     it = 0
@@ -613,7 +614,7 @@ def solve_instance(
             print("time limit")
             break
         elif p_star <= theta_star + VIOL_TOL or (BRANCH_AND_CUT and MAX_CUTS == math.inf):
-            if gapVal == GAPVAL2: #or BRANCH_AND_CUT:
+            if gapVal == TAU1: #or BRANCH_AND_CUT:
                 print("terminating, could not find a constraint violating by more than tol=", VIOL_TOL)
                 # print_sol(model)
                 numBins = sum(model.y[j].value for j in model.J)
@@ -621,7 +622,7 @@ def solve_instance(
                     model.display()
                 break
             else:
-                gapVal = GAPVAL2
+                gapVal = TAU1
                 print("setting gapVal: ", gapVal)
         model, alpha = update_rebpp_pyomo(model, a_bar, V, c, a, scenario_num)
         opt.update()

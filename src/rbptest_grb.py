@@ -22,7 +22,7 @@ from pyomo.opt import SolverStatus, TerminationCondition
 __DEBUG = False
 # The benchmark can be run for the 20-, 30-, 60-, or 90-item families.
 NUM_ITEMS = 90 #20 #90
-num_items = [20] #[20,30,60,90] #[30,60,90] #[60,90]
+num_items = [20,30,60,90] #[20,30,60,90] #[30,60,90] #[60,90]
 TIME_LIMIT = 7200
 #3600
 devProp = 0.4
@@ -101,16 +101,9 @@ for sz in num_items:
         masterTimes.append(masterTime)
         runBins.append(numBins)
 
-    print(" & {t1:.1f} & {t2:.1f} & {t3:.1f} & {t4:.1f} & {t5:.1f} & {t6:} & {t7:.1f} & {t8:} & {t9:} ".format(t1=stat.mean(runTimes),t2=max(runTimes),t3=stat.mean(masterTimes), t4=max(masterTimes), t5=stat.mean(runIter), t6=max(runIter),t7=stat.mean(runBins), t8=max(runBins), t9=num_tests - len(runTimesWoTL)))
+    print(" & {t1:.1f} & {t2:.1f} & {t3:.1f} & {t4:.1f} & {t5:.1f} & {t6:} & {t9:} ".format(t1=stat.mean(runTimes),t2=max(runTimes),t3=stat.mean(masterTimes), t4=max(masterTimes), t5=stat.mean(runIter), t6=max(runIter), t9=num_tests - len(runTimesWoTL)))
+    print("Average bins: {t7:.1f}".format(t7=stat.mean(runBins)))
+    print("Maximum bins: {t8:}".format(t8=max(runBins)))
     print(" & ", stat.mean(runTimesWoTL), " & ", max(runTimesWoTL), " & ", stat.mean(masterTimesWoTL), " & ", max(masterTimesWoTL))
 
-    print("cuts_added: ",cuts_added)
-#print(" & ", stat.mean(runTimes), " & ", max(runTimes), " & ", stat.mean(runIter), " & ", max(runIter), " & ", stat.mean(runBins), " & ", max(runBins))
-
-#runTimesWoTL = list(filter(lambda x: x<TIME_LIMIT,runTimes))
-#masterTimesWoTL = list(filter(lambda x: x<TIME_LIMIT, masterTimes))
-
-      #sum(x >= TIME_LIMIT-0.2 for x in runTimes))
-
-        # model.writeLP("after_update_model.lp")
-        # def update_rebpp(model, a_bar, V, c, a, theta, y, f_bar,z):
+    print("cuts_added: ", cuts_added)
